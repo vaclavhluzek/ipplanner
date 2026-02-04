@@ -1496,6 +1496,8 @@
                     this.warningRows = new Set();
                     this.autoFixNotice = '';
                     let autoFixed = 0;
+                    let askedAutoFix = false;
+                    let allowAutoFix = false;
 
                     const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
                     const networks = [];
@@ -1526,9 +1528,15 @@
 
                             const computedAddress = `${this.numericToIP(net.numericStart)} - ${this.numericToIP(net.numericEnd)}`;
                             if (row['Address space'] !== computedAddress) {
-                                row['Address space'] = computedAddress;
-                                row['Available addresses'] = this.calculateAvailableIPs(net.prefix).toString();
-                                autoFixed += 1;
+                                if (!askedAutoFix) {
+                                    askedAutoFix = true;
+                                    allowAutoFix = confirm('Nesedi Address space u nekterych radku. Chcete je automaticky opravit?');
+                                }
+                                if (allowAutoFix) {
+                                    row['Address space'] = computedAddress;
+                                    row['Available addresses'] = this.calculateAvailableIPs(net.prefix).toString();
+                                    autoFixed += 1;
+                                }
                             }
                         } catch (e) {
                             this.errors.push({ row: idx + 2, message: `Neplatny format IP '${subnet}'` });
