@@ -207,6 +207,8 @@
         .action-btn.up { background: #FFF3E0; color: #E65100; }
         .action-btn.down { background: #FFF3E0; color: #E65100; }
         .action-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+        .action-btn.ok { background: #E8F5E9; color: #2E7D32; }
+        .action-btn.cancel { background: #FFEBEE; color: #C62828; }
 
         /* Legend - compact inline */
         .legend-item {
@@ -336,7 +338,7 @@
         }
         .tooltip {
             position: absolute;
-            bottom: 125%;
+            top: 125%;
             left: 50%;
             transform: translateX(-50%);
             background: rgba(15, 23, 42, 0.95);
@@ -349,7 +351,7 @@
             opacity: 0;
             pointer-events: none;
             transition: opacity 0.15s ease;
-            z-index: 50;
+            z-index: 9999;
         }
         .has-tooltip:hover .tooltip {
             opacity: 1;
@@ -681,11 +683,18 @@
 
                             <!-- Actions (colIndex 12) -->
                             <td class="px-2 py-2 whitespace-nowrap text-center bg-white" :class="getCellBorderClass(item.row, 12, item.index)">
-                                <button @click.stop="moveRowUp(item.index)" class="action-btn up" title="Presunout nahoru" :disabled="item.index === 0">&#9650;</button>
-                                <button @click.stop="moveRowDown(item.index)" class="action-btn down" title="Presunout dolu" :disabled="item.index === csvData.length - 1">&#9660;</button>
-                                <button @click.stop="addSubnetAfter(item.index)" class="action-btn add" title="Pridat radek za">+</button>
-                                <button @click.stop="duplicateRow(item.index)" class="action-btn dup" title="Duplikovat">D</button>
-                                <button @click.stop="deleteRow(item.index)" class="action-btn del" title="Smazat">X</button>
+                                <div v-if="item.row._pending" class="flex items-center justify-center gap-1 text-[10px] text-gray-600">
+                                    <span>Ulozit?</span>
+                                    <button @click.stop="confirmPendingRow(item.index, true)" class="action-btn ok" title="Ulozit">✓</button>
+                                    <button @click.stop="confirmPendingRow(item.index, false)" class="action-btn cancel" title="Zrusit">×</button>
+                                </div>
+                                <div v-else class="flex justify-center">
+                                    <button @click.stop="moveRowUp(item.index)" class="action-btn up" title="Presunout nahoru" :disabled="item.index === 0">&#9650;</button>
+                                    <button @click.stop="moveRowDown(item.index)" class="action-btn down" title="Presunout dolu" :disabled="item.index === csvData.length - 1">&#9660;</button>
+                                    <button @click.stop="addSubnetAfter(item.index)" class="action-btn add" title="Pridat radek za">+</button>
+                                    <button @click.stop="duplicateRow(item.index)" class="action-btn dup" title="Duplikovat">D</button>
+                                    <button @click.stop="deleteRow(item.index)" class="action-btn del" title="Smazat">X</button>
+                                </div>
                             </td>
                         </tr>
                     </tbody>
@@ -1764,22 +1773,44 @@
                 },
 
                 fillGap(gap) {
-                    this.selectedRowIndex = gap.afterIdx;
-                    this.showAddModal = true;
-
                     const prefix = this.suggestPrefix(gap.size);
-                    this.newSubnet = {
-                        suggested: `${gap.start}/${prefix}`,
-                        prefix: prefix,
-                        start: '',
-                        addressSpace: '',
-                        type: '',
-                        purpose: '',
-                        name: `${gap.scopeLabel} free space`,
-                        available: '',
-                        comments: ''
+                    const net = this.parseNetwork(`${gap.start}/${prefix}`);
+
+                    const templateRow = gap.context;
+                    const newRow = {
+                        'Region': templateRow.Region || '',
+                        'Network segment': templateRow['Network segment'] || '',
+                        'Management Group': templateRow['Management Group'] || '',
+                        'Subscription': templateRow.Subscription || '',
+                        'VNet name': templateRow['VNet name'] || '',
+                        'Subnet type': '',
+                        'Start': `${gap.start}/${prefix}`,
+                        'Address space': `${gap.start} - ${this.numericToIP(net.numericEnd)}`,
+                        'Subnet purpose': '',
+                        'Subnet name': `${gap.scopeLabel} free space`,
+                        'Available addresses': this.calculateAvailableIPs(prefix).toString(),
+                        'Comments': '',
+                        _pending: true
                     };
-                    this.updateNewSubnet();
+
+                    const insertIndex = gap.afterIdx + 1;
+                    this.csvData.splice(insertIndex, 0, newRow);
+                    this.calculateGroups();
+                    this.validateAll();
+                    this.detectGaps();
+                    this.pendingRows.add(insertIndex);
+                },
+                confirmPendingRow(index, keep) {
+                    if (!keep) {
+                        this.csvData.splice(index, 1);
+                    } else {
+                        if (this.csvData[index]) {
+                            delete this.csvData[index]._pending;
+                        }
+                    }
+                    this.calculateGroups();
+                    this.validateAll();
+                    this.detectGaps();
                 },
 
                 fillAllGaps() {
@@ -2222,7 +2253,20 @@
                 },
 
                 exportCSV() {
-                    const headers = Object.keys(this.csvData[0]);
+                    const headers = [
+                        'Region',
+                        'Network segment',
+                        'Management Group',
+                        'Subscription',
+                        'VNet name',
+                        'Subnet type',
+                        'Start',
+                        'Address space',
+                        'Subnet purpose',
+                        'Subnet name',
+                        'Available addresses',
+                        'Comments'
+                    ];
                     let csv = headers.join(';') + '\n';
 
                     this.csvData.forEach(row => {
