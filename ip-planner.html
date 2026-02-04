@@ -329,6 +329,37 @@
             border-radius: 10px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
         }
+
+        /* Tooltips */
+        .has-tooltip {
+            position: relative;
+        }
+        .tooltip {
+            position: absolute;
+            bottom: 125%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.95);
+            color: white;
+            padding: 6px 8px;
+            border-radius: 6px;
+            font-size: 11px;
+            line-height: 1.3;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease;
+            z-index: 50;
+        }
+        .has-tooltip:hover .tooltip {
+            opacity: 1;
+        }
+
+        /* Highlight rows */
+        tr.row-highlight > td {
+            box-shadow: inset 0 0 0 2px #f59e0b !important;
+            background-color: #fff7ed !important;
+        }
     </style>
 </head>
 <body class="bg-gray-50">
@@ -378,20 +409,20 @@
             <div class="flex items-center justify-between gap-4 mb-3 flex-wrap">
                 <!-- Stats inline -->
                 <div class="flex items-center gap-3 text-sm">
-                    <span class="text-gray-600">Radku: <strong>{{ csvData.length }}</strong></span>
+                    <span class="text-gray-600 has-tooltip">Radku: <strong>{{ csvData.length }}</strong><span class="tooltip">Celkovy pocet radku v tabulce</span></span>
                     <span class="text-gray-400">|</span>
-                    <span class="text-green-600">Subnety: <strong>{{ totalSubnets }}</strong></span>
+                    <span class="text-green-600 has-tooltip">Subnety: <strong>{{ totalSubnets }}</strong><span class="tooltip">Radky s realnou podsiti</span></span>
                     <span class="text-gray-400">|</span>
-                    <span class="text-gray-500">Free: <strong>{{ totalFreeSpace }}</strong></span>
+                    <span class="text-gray-500 has-tooltip">Free spaces: <strong>{{ totalFreeSpace }}</strong><span class="tooltip">Radky oznacene jako free space</span></span>
                     <span class="text-gray-400">|</span>
-                    <span class="text-red-600 cursor-pointer hover:underline" @click="sidePanelOpen = true" v-if="errorRows.size">Chyby: <strong>{{ errorRows.size }}</strong></span>
-                    <span class="text-green-600" v-else>Chyby: <strong>0</strong></span>
+                    <span class="text-red-600 cursor-pointer hover:underline has-tooltip" @click="sidePanelOpen = true" v-if="errorRows.size">Chyby: <strong>{{ errorRows.size }}</strong><span class="tooltip">Nalezene chyby v datech</span></span>
+                    <span class="text-green-600 has-tooltip" v-else>Chyby: <strong>0</strong><span class="tooltip">Zadne chyby</span></span>
                     <span class="text-gray-400">|</span>
-                    <span class="text-yellow-600 cursor-pointer hover:underline" @click="sidePanelOpen = true" v-if="warnings.length">Varovani: <strong>{{ warnings.length }}</strong></span>
-                    <span class="text-gray-500" v-else>Varovani: <strong>0</strong></span>
+                    <span class="text-yellow-600 cursor-pointer hover:underline has-tooltip" @click="sidePanelOpen = true" v-if="warnings.length">Varovani: <strong>{{ warnings.length }}</strong><span class="tooltip">Upozorneni (napr. poradi IP)</span></span>
+                    <span class="text-gray-500 has-tooltip" v-else>Varovani: <strong>0</strong><span class="tooltip">Zadne varovani</span></span>
                     <span class="text-gray-400">|</span>
-                    <span class="text-blue-600 cursor-pointer hover:underline" @click="sidePanelOpen = true" v-if="gaps.length">Free space: <strong>{{ gaps.length }}</strong></span>
-                    <span class="text-gray-500" v-else>Free space: <strong>0</strong></span>
+                    <span class="text-blue-600 cursor-pointer hover:underline has-tooltip" @click="sidePanelOpen = true" v-if="gaps.length">Gaps: <strong>{{ gaps.length }}</strong><span class="tooltip">Nalezene mezery v IP rozsazich</span></span>
+                    <span class="text-gray-500 has-tooltip" v-else>Gaps: <strong>0</strong><span class="tooltip">Zadne mezery</span></span>
                 </div>
 
                 <!-- Legend inline -->
@@ -409,19 +440,45 @@
 
             <!-- Actions -->
             <div class="mb-2 flex flex-wrap gap-2">
-                <button @click="validateAll" class="btn btn-primary text-xs px-3 py-2">Validovat</button>
-                <button @click="detectGaps" class="btn btn-success text-xs px-3 py-2">Free space helper</button>
-                <button @click="fillAllGaps" class="btn btn-purple text-xs px-3 py-2" :disabled="!gaps.length">Doplnit ({{ gaps.length }})</button>
-                <button @click="sortByIP" class="btn btn-orange text-xs px-3 py-2">Seradit dle IP</button>
-                <button @click="recalculateAll" class="btn btn-indigo text-xs px-3 py-2">Prepocitat</button>
-                <button @click="exportCSV" class="btn btn-gray text-xs px-3 py-2">Export</button>
-                <button @click="reset" class="btn btn-danger text-xs px-3 py-2">Novy soubor</button>
-                <button @click="sidePanelOpen = !sidePanelOpen" class="btn text-xs px-3 py-2" :class="hasIssues ? 'btn-danger' : 'btn-gray'">
+                <button @click="validateAll" class="btn btn-primary text-xs px-3 py-2 has-tooltip">
+                    Validovat
+                    <span class="tooltip">Zkontroluje format, prekryvy a poradi IP</span>
+                </button>
+                <button @click="detectGaps" class="btn btn-success text-xs px-3 py-2 has-tooltip">
+                    Free space helper
+                    <span class="tooltip">Najde mezery v IP rozsazich podle scope</span>
+                </button>
+                <button @click="fillAllGaps" class="btn btn-purple text-xs px-3 py-2 has-tooltip" :disabled="!gaps.length">
+                    Doplnit ({{ gaps.length }})
+                    <span class="tooltip">Vlozi free space radky pro vsechny mezery</span>
+                </button>
+                <button @click="sortByIP" class="btn btn-orange text-xs px-3 py-2 has-tooltip">
+                    Seradit dle IP
+                    <span class="tooltip">Seradi radky podle Start IP</span>
+                </button>
+                <button @click="recalculateAll" class="btn btn-indigo text-xs px-3 py-2 has-tooltip">
+                    Prepocitat
+                    <span class="tooltip">Prepocita Address space, IPs a Subnet name</span>
+                </button>
+                <button @click="exportCSV" class="btn btn-gray text-xs px-3 py-2 has-tooltip">
+                    Export
+                    <span class="tooltip">Stahne aktualni CSV</span>
+                </button>
+                <button @click="reset" class="btn btn-danger text-xs px-3 py-2 has-tooltip">
+                    Novy soubor
+                    <span class="tooltip">Zahodi zmeny a vrati uvodni obrazovku</span>
+                </button>
+                <button @click="sidePanelOpen = !sidePanelOpen" class="btn text-xs px-3 py-2 has-tooltip" :class="hasIssues ? 'btn-danger' : 'btn-gray'">
                     {{ sidePanelOpen ? 'Skryt' : 'Zobrazit' }} panel ({{ errorRows.size + warnings.length + gaps.length }})
+                    <span class="tooltip">Zobrazi panel s chybami, varovanimi a mezerami</span>
                 </button>
-                <button @click="showFilters = !showFilters" class="btn text-xs px-3 py-2 btn-gray">
+                <button @click="showFilters = !showFilters" class="btn text-xs px-3 py-2 btn-gray has-tooltip">
                     {{ showFilters ? 'Skryt' : 'Zobrazit' }} filtry
+                    <span class="tooltip">Filtry pro tabulku a free space helper</span>
                 </button>
+            </div>
+            <div v-if="autoFixNotice" class="mb-3 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded px-3 py-2">
+                {{ autoFixNotice }}
             </div>
 
             <!-- Filters -->
@@ -507,7 +564,7 @@
                         <tr v-for="item in filteredRows"
                             :key="item.index"
                             :id="'row-' + (item.index + 2)"
-                            :class="[getRowClass(item.row, item.index), 'border-t row-hover', selectedRowIndex === item.index ? 'row-selected' : '']"
+                            :class="[getRowClass(item.row, item.index), 'border-t row-hover', selectedRowIndex === item.index ? 'row-selected' : '', highlightedRows.has(item.index) ? 'row-highlight' : '']"
                             @click="selectRow(item.index)">
                             <td class="px-2 py-2 text-gray-500 bg-white">{{ item.index + 2 }}</td>
 
@@ -592,7 +649,7 @@
                             </td>
 
                             <!-- Address space (colIndex 7) -->
-                            <td class="px-2 py-2 font-mono text-xs text-green-700" :class="[getCellClass(item.row, 7, item.index), getCellBorderClass(item.row, 7, item.index)]">{{ item.row['Address space'] }}</td>
+                            <td class="px-2 py-2 font-mono text-xs text-green-700" :class="[getCellClass(item.row, 7, item.index), getCellBorderClass(item.row, 7, item.index)]" @dblclick.stop="highlightRowsInRange(item.index)">{{ item.row['Address space'] }}</td>
 
                             <!-- Subnet purpose - editable (colIndex 8) -->
                             <td class="px-2 py-2 editable-cell" :class="[getCellClass(item.row, 8, item.index), getCellBorderClass(item.row, 8, item.index), {'editing-cell': isEditing(item.index, 'Subnet purpose')}]" @dblclick.stop="startEdit(item.index, 'Subnet purpose', $event)">
@@ -682,7 +739,7 @@
             <!-- Gaps -->
             <div v-if="gaps.length" class="panel panel-info">
                 <div class="flex items-center justify-between mb-2">
-                    <h4 class="font-semibold text-blue-700 text-sm">Free space ({{ gaps.length }})</h4>
+                    <h4 class="font-semibold text-blue-700 text-sm">Gaps ({{ gaps.length }})</h4>
                     <button @click="fillAllGaps" class="text-xs text-blue-600 hover:underline">Doplnit vse</button>
                 </div>
                 <p class="text-[11px] text-blue-700/80 mb-2">
@@ -822,6 +879,8 @@
                         subscription: '',
                         vnet: ''
                     },
+                    highlightedRows: new Set(),
+                    autoFixNotice: '',
                     errorRows: new Set(),
                     warningRows: new Set(),
                     showAddModal: false,
@@ -962,6 +1021,34 @@
                     this.dragOver = false;
                     const file = e.dataTransfer.files[0];
                     this.loadFile(file);
+                },
+                highlightRowsInRange(index) {
+                    const row = this.csvData[index];
+                    if (!row || !row.Start || !row.Start.includes('/')) return;
+
+                    let scopeNet;
+                    try {
+                        scopeNet = this.parseNetwork(row.Start);
+                    } catch (e) {
+                        return;
+                    }
+
+                    this.highlightedRows = new Set();
+                    this.csvData.forEach((r, i) => {
+                        if (!r.Start || !r.Start.includes('/')) return;
+                        try {
+                            const net = this.parseNetwork(r.Start);
+                            if (net.numericStart >= scopeNet.numericStart && net.numericEnd <= scopeNet.numericEnd) {
+                                this.highlightedRows.add(i);
+                            }
+                        } catch (e) {
+                            // ignore invalid
+                        }
+                    });
+
+                    setTimeout(() => {
+                        this.highlightedRows = new Set();
+                    }, 2000);
                 },
                 handleFileSelect(e) {
                     const file = e.target.files[0];
@@ -1407,6 +1494,8 @@
                     this.warnings = [];
                     this.errorRows = new Set();
                     this.warningRows = new Set();
+                    this.autoFixNotice = '';
+                    let autoFixed = 0;
 
                     const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
                     const networks = [];
@@ -1433,6 +1522,13 @@
                                     message: `Spatna sitova adresa '${subnet}' - spravne by melo byt '${correctNetworkIP}/${net.prefix}'`
                                 });
                                 this.errorRows.add(idx + 2);
+                            }
+
+                            const computedAddress = `${this.numericToIP(net.numericStart)} - ${this.numericToIP(net.numericEnd)}`;
+                            if (row['Address space'] !== computedAddress) {
+                                row['Address space'] = computedAddress;
+                                row['Available addresses'] = this.calculateAvailableIPs(net.prefix).toString();
+                                autoFixed += 1;
                             }
                         } catch (e) {
                             this.errors.push({ row: idx + 2, message: `Neplatny format IP '${subnet}'` });
@@ -1501,6 +1597,12 @@
                     // Update last validation time
                     const now = new Date();
                     this.lastValidation = now.toLocaleTimeString('cs-CZ');
+                    if (autoFixed > 0) {
+                        this.autoFixNotice = `Automaticky opraveno ${autoFixed} radku (Address space a IPs).`;
+                        setTimeout(() => {
+                            this.autoFixNotice = '';
+                        }, 2000);
+                    }
                 },
 
                 getFreeSpaceScope(row) {
