@@ -1607,12 +1607,12 @@
 
                         // Only validate naming for actual subnets (not allocations or free space)
                         if (level === 'subnet') {
-                            // Validate naming convention
+                            // Validate naming convention using current pattern
                             if (purpose && !azureSpecial.includes(purpose)) {
-                                const expected = `${purpose}-${subnet.replace('/', '-')}`;
-                                if (name && name !== expected) {
-                                    this.errors.push({ row: idx + 2, message: `Nesoulad nazvu. Ocekavano '${expected}', je '${name}'` });
-                                    this.errorRows.add(idx + 2);
+                                const expected = this.generateSubnetName(row, this.subnetNamingPattern, idx);
+                                if (name && expected && name !== expected) {
+                                    this.warnings.push({ row: idx + 2, message: `Nazev '${name}' nesedi se vzorem. Ocekavano '${expected}'` });
+                                    this.warningRows.add(idx + 2);
                                 }
                             }
 
