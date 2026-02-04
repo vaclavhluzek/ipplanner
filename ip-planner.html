@@ -547,7 +547,7 @@
                             <th class="px-2 py-2 text-left header-calculated">Start</th>
                             <th class="px-2 py-2 text-left header-calculated">Address Space</th>
                             <th class="px-2 py-2 text-left header-editable">Purpose</th>
-                            <th class="px-2 py-2 text-left header-calculated">SUBNET NAME</th>
+                            <th class="px-2 py-2 text-left header-calculated cursor-pointer hover:bg-blue-700" @dblclick="showNamingModal = true" title="Dvojklik pro nastaveni vzoru nazvu">SUBNET NAME</th>
                             <th class="px-2 py-2 text-left header-calculated">IPs</th>
                             <th class="px-2 py-2 text-left header-editable">Comments</th>
                             <th class="px-2 py-2 text-left header-editable">Akce</th>
@@ -854,6 +854,41 @@
                 </div>
             </div>
         </div>
+
+        <!-- Subnet Naming Pattern Modal -->
+        <div v-if="showNamingModal" class="fixed inset-0 modal-overlay flex items-center justify-center z-50" @click.self="showNamingModal = false">
+            <div class="modal-content p-5 max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-gray-800">Vzor nazvu subnetu</h2>
+                    <button @click="showNamingModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Vzor pro generovani nazvu:</label>
+                    <input v-model="subnetNamingPattern" class="w-full p-3 border rounded font-mono text-sm" placeholder="{purpose}-subnet-{region}-{start}">
+                </div>
+
+                <div class="mb-4 bg-gray-50 border rounded p-3">
+                    <div class="text-xs font-semibold text-gray-600 mb-2">Dostupne promenne:</div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div v-for="v in namingPatternVariables" :key="v.name" class="flex items-center gap-2">
+                            <code class="px-2 py-1 bg-blue-100 text-blue-800 rounded cursor-pointer hover:bg-blue-200" @click="subnetNamingPattern += v.name">{{ v.name }}</code>
+                            <span class="text-gray-500">{{ v.desc }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-4 bg-green-50 border border-green-200 rounded p-3">
+                    <div class="text-xs font-semibold text-green-700 mb-1">Nahled:</div>
+                    <div class="font-mono text-sm text-green-800">{{ previewSubnetName }}</div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button @click="showNamingModal = false" class="btn btn-gray">Zavrit</button>
+                    <button @click="applyNamingPatternToAll" class="btn btn-primary">Aplikovat na vsechny subnety</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -910,7 +945,19 @@
                     segmentGroups: [],
                     mgGroups: [],
                     subscriptionGroups: [],
-                    vnetGroups: []
+                    vnetGroups: [],
+                    // Subnet naming pattern
+                    showNamingModal: false,
+                    subnetNamingPattern: '{purpose}-subnet-{region}-{start}',
+                    namingPatternVariables: [
+                        { name: '{purpose}', desc: 'Subnet purpose' },
+                        { name: '{region}', desc: 'Region (zkratka z nazvu)' },
+                        { name: '{start}', desc: 'IP rozsah (/ → -)' },
+                        { name: '{vnet}', desc: 'VNet name' },
+                        { name: '{subscription}', desc: 'Subscription' },
+                        { name: '{mg}', desc: 'Management Group' },
+                        { name: '{segment}', desc: 'Network segment' }
+                    ]
                 }
             },
             computed: {
@@ -922,6 +969,19 @@
                 },
                 hasIssues() {
                     return this.errorRows.size > 0 || this.warnings.length > 0 || this.gaps.length > 0;
+                },
+                previewSubnetName() {
+                    // Generate preview using sample data
+                    const sampleRow = {
+                        'Region': 'West Europe (WE)',
+                        'Network segment': 'Production',
+                        'Management Group': 'Platform',
+                        'Subscription': 'Connectivity',
+                        'VNet name': 'vnet-hub-we',
+                        'Subnet purpose': 'external',
+                        'Start': '10.104.0.0/28'
+                    };
+                    return this.generateSubnetName(sampleRow, this.subnetNamingPattern);
                 },
                 tableFilterOptions() {
                     const unique = (getter) => {
@@ -2056,7 +2116,7 @@
                         const purpose = row['Subnet purpose'];
                         const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
                         if (purpose && !azureSpecial.includes(purpose)) {
-                            row['Subnet name'] = `${purpose}-${row.Start.replace('/', '-')}`;
+                            row['Subnet name'] = this.generateSubnetName(row, this.subnetNamingPattern);
                         }
                     }
 
@@ -2072,7 +2132,7 @@
                     const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
 
                     if (purpose && start && start.includes('/') && !azureSpecial.includes(purpose)) {
-                        row['Subnet name'] = `${purpose}-${start.replace('/', '-')}`;
+                        row['Subnet name'] = this.generateSubnetName(row, this.subnetNamingPattern);
                     } else if (!purpose || azureSpecial.includes(purpose)) {
                         row['Subnet name'] = purpose || '';
                     }
@@ -2095,7 +2155,7 @@
                         const purpose = row['Subnet purpose'];
                         const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
                         if (purpose && !azureSpecial.includes(purpose)) {
-                            row['Subnet name'] = `${purpose}-${start.replace('/', '-')}`;
+                            row['Subnet name'] = this.generateSubnetName(row, this.subnetNamingPattern);
                         }
                     } catch (e) {
                         // Invalid CIDR - leave as is
@@ -2296,7 +2356,18 @@
                 updateSubnetName() {
                     const currentName = (this.newSubnet.name || '').toLowerCase();
                     if (this.newSubnet.purpose && this.newSubnet.purpose.toLowerCase() !== 'free space') {
-                        this.newSubnet.name = `${this.newSubnet.purpose}-${this.newSubnet.start.replace('/', '-')}`;
+                        // Build a temporary row object for name generation
+                        const templateRow = this.csvData[this.selectedRowIndex] || {};
+                        const tempRow = {
+                            'Region': templateRow.Region || '',
+                            'Network segment': templateRow['Network segment'] || '',
+                            'Management Group': templateRow['Management Group'] || '',
+                            'Subscription': templateRow.Subscription || '',
+                            'VNet name': templateRow['VNet name'] || '',
+                            'Subnet purpose': this.newSubnet.purpose,
+                            'Start': this.newSubnet.start
+                        };
+                        this.newSubnet.name = this.generateSubnetName(tempRow, this.subnetNamingPattern);
                     } else if (!currentName.includes('free space')) {
                         this.newSubnet.name = '';
                     }
@@ -2611,6 +2682,66 @@
 
                 formatNumber(num) {
                     return new Intl.NumberFormat('cs-CZ').format(num);
+                },
+
+                // Extract region abbreviation from text like "West Europe (WE)" -> "we"
+                extractRegionAbbr(regionText) {
+                    if (!regionText) return '';
+                    // Try to find abbreviation in parentheses
+                    const match = regionText.match(/\(([^)]+)\)/);
+                    if (match) {
+                        return match[1].toLowerCase();
+                    }
+                    // Fallback: take first letters of each word
+                    return regionText.split(/\s+/).map(w => w[0]).join('').toLowerCase();
+                },
+
+                // Generate subnet name based on pattern
+                generateSubnetName(row, pattern) {
+                    if (!pattern) return '';
+
+                    const start = row.Start || '';
+                    const startFormatted = start.replace('/', '-');
+
+                    let name = pattern;
+                    name = name.replace(/\{purpose\}/gi, row['Subnet purpose'] || '');
+                    name = name.replace(/\{region\}/gi, this.extractRegionAbbr(row.Region));
+                    name = name.replace(/\{start\}/gi, startFormatted);
+                    name = name.replace(/\{vnet\}/gi, row['VNet name'] || '');
+                    name = name.replace(/\{subscription\}/gi, row.Subscription || '');
+                    name = name.replace(/\{mg\}/gi, row['Management Group'] || '');
+                    name = name.replace(/\{segment\}/gi, row['Network segment'] || '');
+
+                    // Clean up multiple dashes and trim
+                    name = name.replace(/-+/g, '-').replace(/^-|-$/g, '');
+
+                    return name;
+                },
+
+                // Apply naming pattern to all subnet rows
+                applyNamingPatternToAll() {
+                    const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
+                    let updated = 0;
+
+                    this.csvData.forEach((row, index) => {
+                        const level = this.getRowLevel(row);
+                        const purpose = row['Subnet purpose'];
+
+                        // Only update actual subnets with purpose (not free space, not Azure special)
+                        if (level === 'subnet' && purpose && !azureSpecial.includes(purpose)) {
+                            const newName = this.generateSubnetName(row, this.subnetNamingPattern);
+                            if (newName && row['Subnet name'] !== newName) {
+                                row['Subnet name'] = newName;
+                                updated++;
+                            }
+                        }
+                    });
+
+                    this.showNamingModal = false;
+                    if (updated > 0) {
+                        this.autoFixNotice = `Aktualizovano ${updated} nazvu subnetu.`;
+                        setTimeout(() => { this.autoFixNotice = ''; }, 3000);
+                    }
                 }
             }
         }).mount('#app');

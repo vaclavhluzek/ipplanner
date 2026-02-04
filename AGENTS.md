@@ -68,6 +68,23 @@ When deleting a row that has child rows within its IP range, the user is asked w
 - OK = delete parent + all children; Cancel = delete only parent
 - Indices are sorted descending before deletion to maintain correct positions
 
+### 5. Customizable subnet naming pattern - NEW FEATURE
+Double-click on "SUBNET NAME" table header opens modal to configure naming pattern.
+
+**Default pattern:** `{purpose}-subnet-{region}-{start}`
+**Example output:** `external-subnet-we-10.104.0.0-28`
+
+**Available variables:**
+- `{purpose}` - Subnet purpose
+- `{region}` - Region abbreviation extracted from parentheses (e.g., "West Europe (WE)" → "we")
+- `{start}` - IP range with / replaced by -
+- `{vnet}`, `{subscription}`, `{mg}`, `{segment}` - Other hierarchy fields
+
+**Implementation:**
+- `generateSubnetName(row, pattern)` - replaces variables in pattern
+- `extractRegionAbbr(text)` - extracts abbreviation from parentheses or creates from first letters
+- `applyNamingPatternToAll()` - regenerates all subnet names using current pattern
+
 ## Remaining Limitations
 
 - Overlaps are only checked between subnets/free-space, not between all allocation levels

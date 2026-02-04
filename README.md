@@ -50,6 +50,7 @@ There is no build system. All UI, styles, and logic are in `ip-planner.html`.
 2. **Improved gap filling** - Gaps are now split into multiple properly aligned CIDR blocks for complete coverage
 3. **Cascading IP changes** - When editing a parent IP (e.g. VNet), all child subnets are automatically updated with the same offset
 4. **Cascading delete** - When deleting a parent row (e.g. Subscription), option to delete all child subnets within its IP range
+5. **Customizable subnet naming** - Double-click "SUBNET NAME" header to configure naming pattern (default: `{purpose}-subnet-{region}-{start}`)
 
 ## Known Limitations
 
