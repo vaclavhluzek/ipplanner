@@ -2116,7 +2116,7 @@
                         const purpose = row['Subnet purpose'];
                         const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
                         if (purpose && !azureSpecial.includes(purpose)) {
-                            row['Subnet name'] = this.generateSubnetName(row, this.subnetNamingPattern);
+                            row['Subnet name'] = this.generateSubnetName(row, this.subnetNamingPattern, idx);
                         }
                     }
 
@@ -2132,7 +2132,7 @@
                     const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
 
                     if (purpose && start && start.includes('/') && !azureSpecial.includes(purpose)) {
-                        row['Subnet name'] = this.generateSubnetName(row, this.subnetNamingPattern);
+                        row['Subnet name'] = this.generateSubnetName(row, this.subnetNamingPattern, index);
                     } else if (!purpose || azureSpecial.includes(purpose)) {
                         row['Subnet name'] = purpose || '';
                     }
@@ -2155,7 +2155,7 @@
                         const purpose = row['Subnet purpose'];
                         const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
                         if (purpose && !azureSpecial.includes(purpose)) {
-                            row['Subnet name'] = this.generateSubnetName(row, this.subnetNamingPattern);
+                            row['Subnet name'] = this.generateSubnetName(row, this.subnetNamingPattern, index);
                         }
                     } catch (e) {
                         // Invalid CIDR - leave as is
@@ -2696,16 +2696,64 @@
                     return regionText.split(/\s+/).map(w => w[0]).join('').toLowerCase();
                 },
 
+                // Find region for a row - check row itself, then parent rows, then ask user
+                findRegionForRow(row, rowIndex) {
+                    // 1. Check if row has Region
+                    if (row.Region && row.Region.trim()) {
+                        return row.Region.trim();
+                    }
+
+                    // 2. Try to find parent row with Region based on IP containment
+                    if (row.Start && row.Start.includes('/')) {
+                        try {
+                            const rowNet = this.parseNetwork(row.Start);
+
+                            // Search all rows for a parent with Region
+                            for (let i = 0; i < this.csvData.length; i++) {
+                                const candidate = this.csvData[i];
+                                if (!candidate.Region || !candidate.Region.trim()) continue;
+                                if (!candidate.Start || !candidate.Start.includes('/')) continue;
+
+                                try {
+                                    const candNet = this.parseNetwork(candidate.Start);
+                                    // Check if current row is inside this candidate's range
+                                    if (rowNet.numericStart >= candNet.numericStart &&
+                                        rowNet.numericEnd <= candNet.numericEnd) {
+                                        return candidate.Region.trim();
+                                    }
+                                } catch (e) {
+                                    // Skip invalid
+                                }
+                            }
+                        } catch (e) {
+                            // Invalid row IP
+                        }
+                    }
+
+                    // 3. Check first rows (often Region is in row 1-2)
+                    for (let i = 0; i < Math.min(5, this.csvData.length); i++) {
+                        if (this.csvData[i].Region && this.csvData[i].Region.trim()) {
+                            return this.csvData[i].Region.trim();
+                        }
+                    }
+
+                    // 4. Not found - return empty, will prompt user in applyNamingPatternToAll
+                    return '';
+                },
+
                 // Generate subnet name based on pattern
-                generateSubnetName(row, pattern) {
+                generateSubnetName(row, pattern, rowIndex = -1) {
                     if (!pattern) return '';
 
                     const start = row.Start || '';
                     const startFormatted = start.replace('/', '-');
 
+                    // Find region - check row, then parents, then first rows
+                    const region = rowIndex >= 0 ? this.findRegionForRow(row, rowIndex) : (row.Region || '');
+
                     let name = pattern;
                     name = name.replace(/\{purpose\}/gi, row['Subnet purpose'] || '');
-                    name = name.replace(/\{region\}/gi, this.extractRegionAbbr(row.Region));
+                    name = name.replace(/\{region\}/gi, this.extractRegionAbbr(region));
                     name = name.replace(/\{start\}/gi, startFormatted);
                     name = name.replace(/\{vnet\}/gi, row['VNet name'] || '');
                     name = name.replace(/\{subscription\}/gi, row.Subscription || '');
@@ -2722,6 +2770,37 @@
                 applyNamingPatternToAll() {
                     const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
                     let updated = 0;
+                    let missingRegion = false;
+                    let userRegion = null;
+
+                    // Check if pattern uses region
+                    const usesRegion = this.subnetNamingPattern.includes('{region}');
+
+                    // First pass: check if any row is missing region
+                    if (usesRegion) {
+                        for (let i = 0; i < this.csvData.length; i++) {
+                            const row = this.csvData[i];
+                            const level = this.getRowLevel(row);
+                            const purpose = row['Subnet purpose'];
+
+                            if (level === 'subnet' && purpose && !azureSpecial.includes(purpose)) {
+                                const region = this.findRegionForRow(row, i);
+                                if (!region) {
+                                    missingRegion = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        // Ask user for region if missing
+                        if (missingRegion) {
+                            userRegion = prompt('Nekterym radkum chybi Region. Zadej zkratku regionu (napr. "we", "gwc"):');
+                            if (userRegion === null) {
+                                return; // User cancelled
+                            }
+                            userRegion = userRegion.trim().toLowerCase();
+                        }
+                    }
 
                     this.csvData.forEach((row, index) => {
                         const level = this.getRowLevel(row);
@@ -2729,11 +2808,25 @@
 
                         // Only update actual subnets with purpose (not free space, not Azure special)
                         if (level === 'subnet' && purpose && !azureSpecial.includes(purpose)) {
-                            const newName = this.generateSubnetName(row, this.subnetNamingPattern);
+                            // Use found region or user-provided fallback
+                            let region = this.findRegionForRow(row, index);
+                            if (!region && userRegion) {
+                                region = userRegion;
+                            }
+
+                            // Temporarily set region for name generation
+                            const originalRegion = row.Region;
+                            if (!row.Region && region) {
+                                row._tempRegion = region;
+                            }
+
+                            const newName = this.generateSubnetNameWithRegion(row, this.subnetNamingPattern, index, region);
                             if (newName && row['Subnet name'] !== newName) {
                                 row['Subnet name'] = newName;
                                 updated++;
                             }
+
+                            delete row._tempRegion;
                         }
                     });
 
@@ -2742,6 +2835,31 @@
                         this.autoFixNotice = `Aktualizovano ${updated} nazvu subnetu.`;
                         setTimeout(() => { this.autoFixNotice = ''; }, 3000);
                     }
+                },
+
+                // Generate subnet name with explicit region override
+                generateSubnetNameWithRegion(row, pattern, rowIndex, regionOverride) {
+                    if (!pattern) return '';
+
+                    const start = row.Start || '';
+                    const startFormatted = start.replace('/', '-');
+
+                    // Use override or find region
+                    let region = regionOverride || this.findRegionForRow(row, rowIndex);
+
+                    let name = pattern;
+                    name = name.replace(/\{purpose\}/gi, row['Subnet purpose'] || '');
+                    name = name.replace(/\{region\}/gi, this.extractRegionAbbr(region) || region);
+                    name = name.replace(/\{start\}/gi, startFormatted);
+                    name = name.replace(/\{vnet\}/gi, row['VNet name'] || '');
+                    name = name.replace(/\{subscription\}/gi, row.Subscription || '');
+                    name = name.replace(/\{mg\}/gi, row['Management Group'] || '');
+                    name = name.replace(/\{segment\}/gi, row['Network segment'] || '');
+
+                    // Clean up multiple dashes and trim
+                    name = name.replace(/-+/g, '-').replace(/^-|-$/g, '');
+
+                    return name;
                 }
             }
         }).mount('#app');
