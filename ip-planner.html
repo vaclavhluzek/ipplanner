@@ -2252,10 +2252,83 @@
                 },
 
                 duplicateRow(index) {
-                    const original = this.csvData[index];
-                    const newRow = { ...original };
-                    this.csvData.splice(index + 1, 0, newRow);
+                    const row = this.csvData[index];
+                    const start = row.Start;
+
+                    // Check if this row has child rows within its IP range
+                    let childIndices = [];
+                    if (start && start.includes('/')) {
+                        try {
+                            const parentNet = this.parseNetwork(start);
+
+                            // Find all rows whose IP falls strictly within this range
+                            this.csvData.forEach((r, idx) => {
+                                if (idx === index) return;
+                                if (!r.Start || !r.Start.includes('/')) return;
+
+                                try {
+                                    const childNet = this.parseNetwork(r.Start);
+                                    // Check if child is strictly inside parent range
+                                    if (childNet.numericStart >= parentNet.numericStart &&
+                                        childNet.numericEnd <= parentNet.numericEnd &&
+                                        childNet.prefix > parentNet.prefix) {
+                                        childIndices.push(idx);
+                                    }
+                                } catch (e) {
+                                    // Skip invalid CIDRs
+                                }
+                            });
+                        } catch (e) {
+                            // Invalid parent CIDR, no children to find
+                        }
+                    }
+
+                    if (childIndices.length > 0) {
+                        // Has children - ask what to do
+                        const level = this.getRowLevel(row);
+                        const levelNames = {
+                            'region': 'Region',
+                            'network-segment': 'Network segment',
+                            'management-group': 'Management Group',
+                            'subscription': 'Subscription',
+                            'vnet': 'VNet',
+                            'subnet': 'Subnet',
+                            'free-space': 'Free space'
+                        };
+                        const levelName = levelNames[level] || 'Radek';
+
+                        const choice = confirm(
+                            `${levelName} "${start}" obsahuje ${childIndices.length} podrizených radku.\n\n` +
+                            `Klikni OK pro duplikovani VSECH (${childIndices.length + 1} radku)\n` +
+                            `Klikni Zrusit pro duplikovani pouze tohoto radku`
+                        );
+
+                        if (choice) {
+                            // Duplicate all - collect all indices to duplicate (parent + children)
+                            const allIndices = [index, ...childIndices].sort((a, b) => a - b);
+
+                            // Find insertion point (after the last child)
+                            const insertAfter = Math.max(...allIndices);
+
+                            // Create copies of all rows
+                            const copies = allIndices.map(idx => ({ ...this.csvData[idx] }));
+
+                            // Insert all copies after the last original
+                            this.csvData.splice(insertAfter + 1, 0, ...copies);
+                        } else {
+                            // Duplicate only parent
+                            const newRow = { ...row };
+                            this.csvData.splice(index + 1, 0, newRow);
+                        }
+                    } else {
+                        // No children - simple duplicate
+                        const newRow = { ...row };
+                        this.csvData.splice(index + 1, 0, newRow);
+                    }
+
                     this.calculateGroups();
+                    this.validateAll();
+                    this.detectGaps();
                 },
 
                 deleteRow(index) {
