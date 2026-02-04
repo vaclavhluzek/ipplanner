@@ -373,7 +373,7 @@
         </div>
 
         <!-- Main Content -->
-        <div v-if="csvData.length" class="main-content" :class="{ 'panel-open': sidePanelOpen }">
+            <div v-if="csvData.length" class="main-content" :class="{ 'panel-open': sidePanelOpen }">
             <!-- Compact toolbar -->
             <div class="flex items-center justify-between gap-4 mb-3 flex-wrap">
                 <!-- Stats inline -->
@@ -419,6 +419,66 @@
                 <button @click="sidePanelOpen = !sidePanelOpen" class="btn text-xs px-3 py-2" :class="hasIssues ? 'btn-danger' : 'btn-gray'">
                     {{ sidePanelOpen ? 'Skryt' : 'Zobrazit' }} panel ({{ errorRows.size + warnings.length + gaps.length }})
                 </button>
+                <button @click="showFilters = !showFilters" class="btn text-xs px-3 py-2 btn-gray">
+                    {{ showFilters ? 'Skryt' : 'Zobrazit' }} filtry
+                </button>
+            </div>
+
+            <!-- Filters -->
+            <div v-if="showFilters" class="mb-3 bg-white border rounded p-3 text-xs text-gray-700 shadow-sm">
+                <div class="font-semibold text-gray-800 mb-2">Filtry hlavni tabulky</div>
+                <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mb-3">
+                    <div>
+                        <label class="block text-[11px] font-medium text-gray-600 mb-1">Network segment</label>
+                        <select v-model="tableFilter.segment" class="w-full p-2 border rounded text-xs">
+                            <option value="">All</option>
+                            <option v-for="s in tableFilterOptions.segment" :key="s" :value="s">{{ s }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-gray-600 mb-1">MG</label>
+                        <select v-model="tableFilter.managementGroup" class="w-full p-2 border rounded text-xs">
+                            <option value="">All</option>
+                            <option v-for="m in tableFilterOptions.managementGroup" :key="m" :value="m">{{ m }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-gray-600 mb-1">Subscription</label>
+                        <select v-model="tableFilter.subscription" class="w-full p-2 border rounded text-xs">
+                            <option value="">All</option>
+                            <option v-for="s in tableFilterOptions.subscription" :key="s" :value="s">{{ s }}</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-medium text-gray-600 mb-1">VNet</label>
+                        <select v-model="tableFilter.vnet" class="w-full p-2 border rounded text-xs">
+                            <option value="">All</option>
+                            <option v-for="v in tableFilterOptions.vnet" :key="v" :value="v">{{ v }}</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="font-semibold text-gray-800 mb-2">Free space filtry</div>
+                <div class="flex flex-wrap items-center gap-3 text-xs text-gray-600">
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" v-model="freeSpaceFilter.networkSegment" @change="detectGaps">
+                        Network segment
+                    </label>
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" v-model="freeSpaceFilter.managementGroup" @change="detectGaps">
+                        MG
+                    </label>
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" v-model="freeSpaceFilter.subscription" @change="detectGaps">
+                        Subscription
+                    </label>
+                    <label class="flex items-center gap-1 cursor-pointer">
+                        <input type="checkbox" v-model="freeSpaceFilter.vnet" @change="detectGaps">
+                        VNet
+                    </label>
+                    <button class="text-xs text-blue-600 hover:underline" @click="setAllFreeSpaceFilters(true); detectGaps()">All</button>
+                    <button class="text-xs text-blue-600 hover:underline" @click="setAllFreeSpaceFilters(false); detectGaps()">None</button>
+                </div>
             </div>
 
             <!-- Data Table -->
@@ -430,86 +490,86 @@
                             <th class="px-2 py-2 text-left header-editable">#</th>
                             <th class="px-2 py-2 text-left header-editable">Region</th>
                             <th class="px-2 py-2 text-left header-editable">Network Segment</th>
-                            <th class="px-2 py-2 text-left header-editable">MG</th>
+                            <th class="px-2 py-2 text-left header-editable">MANAGEMENT GROUP</th>
                             <th class="px-2 py-2 text-left header-editable">Subscription</th>
                             <th class="px-2 py-2 text-left header-editable">VNet</th>
-                            <th class="px-2 py-2 text-left header-editable">Type</th>
+                            <th class="px-2 py-2 text-left header-editable">SUBNET TYPE</th>
                             <th class="px-2 py-2 text-left header-calculated">Start</th>
                             <th class="px-2 py-2 text-left header-calculated">Address Space</th>
                             <th class="px-2 py-2 text-left header-editable">Purpose</th>
-                            <th class="px-2 py-2 text-left header-calculated">Name</th>
-                            <th class="px-2 py-2 text-left header-calculated">Avail</th>
+                            <th class="px-2 py-2 text-left header-calculated">SUBNET NAME</th>
+                            <th class="px-2 py-2 text-left header-calculated">IPs</th>
                             <th class="px-2 py-2 text-left header-editable">Comments</th>
                             <th class="px-2 py-2 text-left header-editable">Akce</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <tr v-for="(row, index) in csvData"
-                            :key="index"
-                            :id="'row-' + (index + 2)"
-                            :class="[getRowClass(row, index), 'border-t row-hover', selectedRowIndex === index ? 'row-selected' : '']"
-                            @click="selectRow(index)">
-                            <td class="px-2 py-2 text-gray-500 bg-white">{{ index + 2 }}</td>
+                        <tr v-for="item in filteredRows"
+                            :key="item.index"
+                            :id="'row-' + (item.index + 2)"
+                            :class="[getRowClass(item.row, item.index), 'border-t row-hover', selectedRowIndex === item.index ? 'row-selected' : '']"
+                            @click="selectRow(item.index)">
+                            <td class="px-2 py-2 text-gray-500 bg-white">{{ item.index + 2 }}</td>
 
                             <!-- Region - editable (colIndex 0) -->
-                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(row, 0, index), getCellBorderClass(row, 0, index), {'editing-cell': isEditing(index, 'Region')}]" @dblclick.stop="startEdit(index, 'Region', $event)">
-                                <input v-if="isEditing(index, 'Region')"
-                                       v-model="row.Region"
+                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(item.row, 0, item.index), getCellBorderClass(item.row, 0, item.index), {'editing-cell': isEditing(item.index, 'Region')}]" @dblclick.stop="startEdit(item.index, 'Region', $event)">
+                                <input v-if="isEditing(item.index, 'Region')"
+                                       v-model="item.row.Region"
                                        @blur="stopEdit"
                                        @keyup.enter="stopEdit"
                                        @keyup.escape="cancelEdit"
                                        class="w-full edit-input">
-                                <span v-else>{{ row.Region }}</span>
+                                <span v-else>{{ item.row.Region }}</span>
                             </td>
 
                             <!-- Network segment - editable (colIndex 1) -->
-                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(row, 1, index), getCellBorderClass(row, 1, index), {'editing-cell': isEditing(index, 'Network segment')}]" @dblclick.stop="startEdit(index, 'Network segment', $event)">
-                                <input v-if="isEditing(index, 'Network segment')"
-                                       v-model="row['Network segment']"
+                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(item.row, 1, item.index), getCellBorderClass(item.row, 1, item.index), {'editing-cell': isEditing(item.index, 'Network segment')}]" @dblclick.stop="startEdit(item.index, 'Network segment', $event)">
+                                <input v-if="isEditing(item.index, 'Network segment')"
+                                       v-model="item.row['Network segment']"
                                        @blur="stopEdit"
                                        @keyup.enter="stopEdit"
                                        @keyup.escape="cancelEdit"
                                        class="edit-input">
-                                <span v-else>{{ row['Network segment'] }}</span>
+                                <span v-else>{{ item.row['Network segment'] }}</span>
                             </td>
 
                             <!-- Management Group - editable (colIndex 2) -->
-                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(row, 2, index), getCellBorderClass(row, 2, index), {'editing-cell': isEditing(index, 'Management Group')}]" @dblclick.stop="startEdit(index, 'Management Group', $event)">
-                                <input v-if="isEditing(index, 'Management Group')"
-                                       v-model="row['Management Group']"
+                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(item.row, 2, item.index), getCellBorderClass(item.row, 2, item.index), {'editing-cell': isEditing(item.index, 'Management Group')}]" @dblclick.stop="startEdit(item.index, 'Management Group', $event)">
+                                <input v-if="isEditing(item.index, 'Management Group')"
+                                       v-model="item.row['Management Group']"
                                        @blur="stopEdit"
                                        @keyup.enter="stopEdit"
                                        @keyup.escape="cancelEdit"
                                        class="edit-input">
-                                <span v-else>{{ row['Management Group'] }}</span>
+                                <span v-else>{{ item.row['Management Group'] }}</span>
                             </td>
 
                             <!-- Subscription - editable (colIndex 3) -->
-                            <td class="px-2 py-2 font-medium editable-cell" :class="[getCellClass(row, 3, index), getCellBorderClass(row, 3, index), {'editing-cell': isEditing(index, 'Subscription')}]" @dblclick.stop="startEdit(index, 'Subscription', $event)">
-                                <input v-if="isEditing(index, 'Subscription')"
-                                       v-model="row.Subscription"
+                            <td class="px-2 py-2 font-medium editable-cell" :class="[getCellClass(item.row, 3, item.index), getCellBorderClass(item.row, 3, item.index), {'editing-cell': isEditing(item.index, 'Subscription')}]" @dblclick.stop="startEdit(item.index, 'Subscription', $event)">
+                                <input v-if="isEditing(item.index, 'Subscription')"
+                                       v-model="item.row.Subscription"
                                        @blur="stopEdit"
                                        @keyup.enter="stopEdit"
                                        @keyup.escape="cancelEdit"
                                        class="edit-input">
-                                <span v-else>{{ row.Subscription }}</span>
+                                <span v-else>{{ item.row.Subscription }}</span>
                             </td>
 
                             <!-- VNet name - editable (colIndex 4) -->
-                            <td class="px-2 py-2 font-medium editable-cell" :class="[getCellClass(row, 4, index), getCellBorderClass(row, 4, index), {'editing-cell': isEditing(index, 'VNet name')}]" @dblclick.stop="startEdit(index, 'VNet name', $event)">
-                                <input v-if="isEditing(index, 'VNet name')"
-                                       v-model="row['VNet name']"
+                            <td class="px-2 py-2 font-medium editable-cell" :class="[getCellClass(item.row, 4, item.index), getCellBorderClass(item.row, 4, item.index), {'editing-cell': isEditing(item.index, 'VNet name')}]" @dblclick.stop="startEdit(item.index, 'VNet name', $event)">
+                                <input v-if="isEditing(item.index, 'VNet name')"
+                                       v-model="item.row['VNet name']"
                                        @blur="stopEdit"
                                        @keyup.enter="stopEdit"
                                        @keyup.escape="cancelEdit"
                                        class="edit-input">
-                                <span v-else>{{ row['VNet name'] }}</span>
+                                <span v-else>{{ item.row['VNet name'] }}</span>
                             </td>
 
                             <!-- Subnet type - editable (colIndex 5) -->
-                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(row, 5, index), getCellBorderClass(row, 5, index), {'editing-cell': isEditing(index, 'Subnet type')}]" @dblclick.stop="startEdit(index, 'Subnet type', $event)">
-                                <select v-if="isEditing(index, 'Subnet type')"
-                                        v-model="row['Subnet type']"
+                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(item.row, 5, item.index), getCellBorderClass(item.row, 5, item.index), {'editing-cell': isEditing(item.index, 'Subnet type')}]" @dblclick.stop="startEdit(item.index, 'Subnet type', $event)">
+                                <select v-if="isEditing(item.index, 'Subnet type')"
+                                        v-model="item.row['Subnet type']"
                                         @blur="stopEdit"
                                         @change="stopEdit"
                                         class="edit-input">
@@ -517,58 +577,58 @@
                                     <option value="isolated">isolated</option>
                                     <option value="common">common</option>
                                 </select>
-                                <span v-else>{{ row['Subnet type'] }}</span>
+                                <span v-else>{{ item.row['Subnet type'] }}</span>
                             </td>
 
                             <!-- Start - editable (colIndex 6) -->
-                            <td class="px-2 py-2 font-mono text-blue-700 editable-cell" :class="[getCellClass(row, 6, index), getCellBorderClass(row, 6, index), {'editing-cell': isEditing(index, 'Start')}]" @dblclick.stop="startEdit(index, 'Start', $event)">
-                                <input v-if="isEditing(index, 'Start')"
-                                       v-model="row.Start"
-                                       @blur="onStartEdit(index)"
-                                       @keyup.enter="onStartEdit(index)"
+                            <td class="px-2 py-2 font-mono text-blue-700 editable-cell" :class="[getCellClass(item.row, 6, item.index), getCellBorderClass(item.row, 6, item.index), {'editing-cell': isEditing(item.index, 'Start')}]" @dblclick.stop="startEdit(item.index, 'Start', $event)">
+                                <input v-if="isEditing(item.index, 'Start')"
+                                       v-model="item.row.Start"
+                                       @blur="onStartEdit(item.index)"
+                                       @keyup.enter="onStartEdit(item.index)"
                                        @keyup.escape="cancelEdit"
                                        class="font-mono edit-input">
-                                <span v-else>{{ row.Start }}</span>
+                                <span v-else>{{ item.row.Start }}</span>
                             </td>
 
                             <!-- Address space (colIndex 7) -->
-                            <td class="px-2 py-2 font-mono text-xs text-green-700" :class="[getCellClass(row, 7, index), getCellBorderClass(row, 7, index)]">{{ row['Address space'] }}</td>
+                            <td class="px-2 py-2 font-mono text-xs text-green-700" :class="[getCellClass(item.row, 7, item.index), getCellBorderClass(item.row, 7, item.index)]">{{ item.row['Address space'] }}</td>
 
                             <!-- Subnet purpose - editable (colIndex 8) -->
-                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(row, 8, index), getCellBorderClass(row, 8, index), {'editing-cell': isEditing(index, 'Subnet purpose')}]" @dblclick.stop="startEdit(index, 'Subnet purpose', $event)">
-                                <input v-if="isEditing(index, 'Subnet purpose')"
-                                       v-model="row['Subnet purpose']"
-                                       @blur="onPurposeEdit(index)"
-                                       @keyup.enter="onPurposeEdit(index)"
+                            <td class="px-2 py-2 editable-cell" :class="[getCellClass(item.row, 8, item.index), getCellBorderClass(item.row, 8, item.index), {'editing-cell': isEditing(item.index, 'Subnet purpose')}]" @dblclick.stop="startEdit(item.index, 'Subnet purpose', $event)">
+                                <input v-if="isEditing(item.index, 'Subnet purpose')"
+                                       v-model="item.row['Subnet purpose']"
+                                       @blur="onPurposeEdit(item.index)"
+                                       @keyup.enter="onPurposeEdit(item.index)"
                                        @keyup.escape="cancelEdit"
                                        class="edit-input">
-                                <span v-else>{{ row['Subnet purpose'] }}</span>
+                                <span v-else>{{ item.row['Subnet purpose'] }}</span>
                             </td>
 
                             <!-- Subnet name (colIndex 9) -->
-                            <td class="px-2 py-2 font-mono text-xs" :class="[getCellClass(row, 9, index), getCellBorderClass(row, 9, index)]">{{ row['Subnet name'] }}</td>
+                            <td class="px-2 py-2 font-mono text-xs" :class="[getCellClass(item.row, 9, item.index), getCellBorderClass(item.row, 9, item.index)]">{{ item.row['Subnet name'] }}</td>
 
                             <!-- Available addresses (colIndex 10) -->
-                            <td class="px-2 py-2 text-right" :class="[getCellClass(row, 10, index), getCellBorderClass(row, 10, index)]">{{ row['Available addresses'] }}</td>
+                            <td class="px-2 py-2 text-right" :class="[getCellClass(item.row, 10, item.index), getCellBorderClass(item.row, 10, item.index)]">{{ item.row['Available addresses'] }}</td>
 
                             <!-- Comments - editable (colIndex 11) -->
-                            <td class="px-2 py-2 text-gray-600 italic text-xs editable-cell" :class="[getCellClass(row, 11, index), getCellBorderClass(row, 11, index), {'editing-cell': isEditing(index, 'Comments')}]" @dblclick.stop="startEdit(index, 'Comments', $event)">
-                                <input v-if="isEditing(index, 'Comments')"
-                                       v-model="row.Comments"
+                            <td class="px-2 py-2 text-gray-600 italic text-xs editable-cell" :class="[getCellClass(item.row, 11, item.index), getCellBorderClass(item.row, 11, item.index), {'editing-cell': isEditing(item.index, 'Comments')}]" @dblclick.stop="startEdit(item.index, 'Comments', $event)">
+                                <input v-if="isEditing(item.index, 'Comments')"
+                                       v-model="item.row.Comments"
                                        @blur="stopEdit"
                                        @keyup.enter="stopEdit"
                                        @keyup.escape="cancelEdit"
                                        class="edit-input">
-                                <span v-else>{{ row.Comments }}</span>
+                                <span v-else>{{ item.row.Comments }}</span>
                             </td>
 
                             <!-- Actions (colIndex 12) -->
-                            <td class="px-2 py-2 whitespace-nowrap text-center bg-white" :class="getCellBorderClass(row, 12, index)">
-                                <button @click.stop="moveRowUp(index)" class="action-btn up" title="Presunout nahoru" :disabled="index === 0">&#9650;</button>
-                                <button @click.stop="moveRowDown(index)" class="action-btn down" title="Presunout dolu" :disabled="index === csvData.length - 1">&#9660;</button>
-                                <button @click.stop="addSubnetAfter(index)" class="action-btn add" title="Pridat radek za">+</button>
-                                <button @click.stop="duplicateRow(index)" class="action-btn dup" title="Duplikovat">D</button>
-                                <button @click.stop="deleteRow(index)" class="action-btn del" title="Smazat">X</button>
+                            <td class="px-2 py-2 whitespace-nowrap text-center bg-white" :class="getCellBorderClass(item.row, 12, item.index)">
+                                <button @click.stop="moveRowUp(item.index)" class="action-btn up" title="Presunout nahoru" :disabled="item.index === 0">&#9650;</button>
+                                <button @click.stop="moveRowDown(item.index)" class="action-btn down" title="Presunout dolu" :disabled="item.index === csvData.length - 1">&#9660;</button>
+                                <button @click.stop="addSubnetAfter(item.index)" class="action-btn add" title="Pridat radek za">+</button>
+                                <button @click.stop="duplicateRow(item.index)" class="action-btn dup" title="Duplikovat">D</button>
+                                <button @click.stop="deleteRow(item.index)" class="action-btn del" title="Smazat">X</button>
                             </td>
                         </tr>
                     </tbody>
@@ -625,6 +685,9 @@
                     <h4 class="font-semibold text-blue-700 text-sm">Free space ({{ gaps.length }})</h4>
                     <button @click="fillAllGaps" class="text-xs text-blue-600 hover:underline">Doplnit vse</button>
                 </div>
+                <p class="text-[11px] text-blue-700/80 mb-2">
+                    Helper prohledava rozsahy od shora (Network segment → MG → Subscription → VNet) a hleda neobsazene IP bloky mezi podsitemi v dane urovni. Volne misto muze doplnit jako “&lt;scope&gt; free space”.
+                </p>
                 <div class="space-y-2 max-h-64 overflow-y-auto">
                     <div v-for="(gap, index) in gaps" :key="index" class="bg-white p-2 rounded border text-xs">
                         <div class="font-mono text-blue-700">{{ gap.start }} - {{ gap.end }}</div>
@@ -723,6 +786,19 @@
                     errors: [],
                     warnings: [],
                     gaps: [],
+                    freeSpaceFilter: {
+                        networkSegment: true,
+                        managementGroup: true,
+                        subscription: true,
+                        vnet: true
+                    },
+                    showFilters: false,
+                    tableFilter: {
+                        segment: '',
+                        managementGroup: '',
+                        subscription: '',
+                        vnet: ''
+                    },
                     errorRows: new Set(),
                     warningRows: new Set(),
                     showAddModal: false,
@@ -759,9 +835,102 @@
                 },
                 hasIssues() {
                     return this.errorRows.size > 0 || this.warnings.length > 0 || this.gaps.length > 0;
+                },
+                tableFilterOptions() {
+                    const unique = (getter) => {
+                        const set = new Set();
+                        this.csvData.forEach(row => {
+                            const value = (getter(row) || '').trim();
+                            if (value) set.add(value);
+                        });
+                        return Array.from(set).sort((a, b) => a.localeCompare(b));
+                    };
+
+                    return {
+                        segment: unique(row => row['Network segment']),
+                        managementGroup: unique(row => row['Management Group']),
+                        subscription: unique(row => row.Subscription),
+                        vnet: unique(row => row['VNet name'])
+                    };
+                },
+                filteredRows() {
+                    const selection = this.getActiveScopeSelection();
+                    const scopeNet = selection ? this.findScopeNet(selection.level, selection.value) : null;
+
+                    return this.csvData
+                        .map((row, index) => ({ row, index }))
+                        .filter(({ row }) => this.rowMatchesScope(row, selection, scopeNet));
                 }
             },
             methods: {
+                getActiveScopeSelection() {
+                    const vnet = (this.tableFilter.vnet || '').trim();
+                    const sub = (this.tableFilter.subscription || '').trim();
+                    const mg = (this.tableFilter.managementGroup || '').trim();
+                    const seg = (this.tableFilter.segment || '').trim();
+
+                    if (vnet) return { level: 'vnet', value: vnet };
+                    if (sub) return { level: 'subscription', value: sub };
+                    if (mg) return { level: 'management-group', value: mg };
+                    if (seg) return { level: 'network-segment', value: seg };
+                    return null;
+                },
+
+                findScopeNet(level, value) {
+                    for (const row of this.csvData) {
+                        if (!row.Start || !row.Start.includes('/')) continue;
+                        if (this.getRowLevel(row) !== level) continue;
+
+                        if (level === 'vnet' && (row['VNet name'] || '').trim() !== value) continue;
+                        if (level === 'subscription' && (row.Subscription || '').trim() !== value) continue;
+                        if (level === 'management-group' && (row['Management Group'] || '').trim() !== value) continue;
+                        if (level === 'network-segment' && (row['Network segment'] || '').trim() !== value) continue;
+
+                        try {
+                            return this.parseNetwork(row.Start);
+                        } catch (e) {
+                            return null;
+                        }
+                    }
+
+                    return null;
+                },
+
+                rowMatchesScope(row, selection, scopeNet) {
+                    if (!selection || !scopeNet) {
+                        return true;
+                    }
+
+                    // Rows without Start: include only if they match the selected scope value
+                    if (!row.Start || !row.Start.includes('/')) {
+                        if (selection.level === 'vnet') {
+                            return (row['VNet name'] || '').trim() === selection.value;
+                        }
+                        if (selection.level === 'subscription') {
+                            return (row.Subscription || '').trim() === selection.value;
+                        }
+                        if (selection.level === 'management-group') {
+                            return (row['Management Group'] || '').trim() === selection.value;
+                        }
+                        if (selection.level === 'network-segment') {
+                            return (row['Network segment'] || '').trim() === selection.value;
+                        }
+                        return false;
+                    }
+
+                    try {
+                        const net = this.parseNetwork(row.Start);
+
+                        const isInside = net.numericStart >= scopeNet.numericStart &&
+                                         net.numericEnd <= scopeNet.numericEnd;
+                        const isParent = net.numericStart <= scopeNet.numericStart &&
+                                         net.numericEnd >= scopeNet.numericEnd;
+
+                        return isInside || isParent;
+                    } catch (e) {
+                        return false;
+                    }
+                },
                 handleFileDrop(e) {
                     this.dragOver = false;
                     const file = e.dataTransfer.files[0];
@@ -1221,6 +1390,13 @@
                     return null;
                 },
 
+                setAllFreeSpaceFilters(value) {
+                    this.freeSpaceFilter.networkSegment = value;
+                    this.freeSpaceFilter.managementGroup = value;
+                    this.freeSpaceFilter.subscription = value;
+                    this.freeSpaceFilter.vnet = value;
+                },
+
                 detectGaps() {
                     this.gaps = [];
                     const allNetworks = [];
@@ -1261,6 +1437,11 @@
                     const scopeLevels = ['network-segment', 'management-group', 'subscription', 'vnet'];
 
                     for (const scopeLevel of scopeLevels) {
+                        if (scopeLevel === 'network-segment' && !this.freeSpaceFilter.networkSegment) continue;
+                        if (scopeLevel === 'management-group' && !this.freeSpaceFilter.managementGroup) continue;
+                        if (scopeLevel === 'subscription' && !this.freeSpaceFilter.subscription) continue;
+                        if (scopeLevel === 'vnet' && !this.freeSpaceFilter.vnet) continue;
+
                         const scopeRows = allNetworks.filter(n => n.level === scopeLevel);
 
                         for (const scopeRow of scopeRows) {
@@ -1893,8 +2074,8 @@
                         numericStart: networkStart,
                         numericEnd: networkEnd,
                         mask
-                    };
-                },
+                };
+            },
 
                 isValidIP(ip) {
                     const parts = ip.split('.');
