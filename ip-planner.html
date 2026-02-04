@@ -390,8 +390,8 @@
                     <span class="text-yellow-600 cursor-pointer hover:underline" @click="sidePanelOpen = true" v-if="warnings.length">Varovani: <strong>{{ warnings.length }}</strong></span>
                     <span class="text-gray-500" v-else>Varovani: <strong>0</strong></span>
                     <span class="text-gray-400">|</span>
-                    <span class="text-blue-600 cursor-pointer hover:underline" @click="sidePanelOpen = true" v-if="gaps.length">Mezery: <strong>{{ gaps.length }}</strong></span>
-                    <span class="text-gray-500" v-else>Mezery: <strong>0</strong></span>
+                    <span class="text-blue-600 cursor-pointer hover:underline" @click="sidePanelOpen = true" v-if="gaps.length">Free space: <strong>{{ gaps.length }}</strong></span>
+                    <span class="text-gray-500" v-else>Free space: <strong>0</strong></span>
                 </div>
 
                 <!-- Legend inline -->
@@ -410,7 +410,7 @@
             <!-- Actions -->
             <div class="mb-2 flex flex-wrap gap-2">
                 <button @click="validateAll" class="btn btn-primary text-xs px-3 py-2">Validovat</button>
-                <button @click="detectGaps" class="btn btn-success text-xs px-3 py-2">Hledat mezery</button>
+                <button @click="detectGaps" class="btn btn-success text-xs px-3 py-2">Free space helper</button>
                 <button @click="fillAllGaps" class="btn btn-purple text-xs px-3 py-2" :disabled="!gaps.length">Doplnit ({{ gaps.length }})</button>
                 <button @click="sortByIP" class="btn btn-orange text-xs px-3 py-2">Seradit dle IP</button>
                 <button @click="recalculateAll" class="btn btn-indigo text-xs px-3 py-2">Prepocitat</button>
@@ -585,7 +585,7 @@
         <!-- Side Panel for Errors/Warnings/Gaps -->
         <div class="side-panel" :class="{ 'open': sidePanelOpen }" v-if="csvData.length">
             <div class="flex items-center justify-between mb-4">
-                <h3 class="font-bold text-gray-800">Problemy & Mezery</h3>
+                <h3 class="font-bold text-gray-800">Problemy & Free space</h3>
                 <button @click="sidePanelOpen = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
             </div>
 
@@ -622,13 +622,13 @@
             <!-- Gaps -->
             <div v-if="gaps.length" class="panel panel-info">
                 <div class="flex items-center justify-between mb-2">
-                    <h4 class="font-semibold text-blue-700 text-sm">Mezery ({{ gaps.length }})</h4>
+                    <h4 class="font-semibold text-blue-700 text-sm">Free space ({{ gaps.length }})</h4>
                     <button @click="fillAllGaps" class="text-xs text-blue-600 hover:underline">Doplnit vse</button>
                 </div>
                 <div class="space-y-2 max-h-64 overflow-y-auto">
                     <div v-for="(gap, index) in gaps" :key="index" class="bg-white p-2 rounded border text-xs">
                         <div class="font-mono text-blue-700">{{ gap.start }} - {{ gap.end }}</div>
-                        <div class="text-gray-500">{{ formatNumber(gap.size) }} adres | radek {{ gap.afterRow }}</div>
+                        <div class="text-gray-500">{{ formatNumber(gap.size) }} adres | {{ gap.scopeLabel }} | radek {{ gap.afterRow }}</div>
                         <button @click="fillGap(gap)" class="mt-1 text-blue-600 hover:underline text-xs">Doplnit</button>
                     </div>
                 </div>
@@ -1042,10 +1042,14 @@
                     const hasVNet = row['VNet name'] && row['VNet name'].trim();
                     const hasSubnetType = row['Subnet type'] && row['Subnet type'].trim();
                     const hasSubnetPurpose = row['Subnet purpose'] && row['Subnet purpose'].trim();
+                    const name = (row['Subnet name'] || '').toLowerCase();
                     const comments = (row.Comments || '').toLowerCase();
 
-                    // Check for free space indicators in comments
-                    const isFreeSpace = comments.includes('free space') ||
+                    // Check for free space indicators in name (preferred) or comments (legacy)
+                    const isFreeSpace = name.includes('free space') ||
+                                       name.includes('free scope') ||
+                                       name.includes('freespace') ||
+                                       comments.includes('free space') ||
                                        comments.includes('free scope') ||
                                        comments.includes('freespace');
 
@@ -1057,7 +1061,7 @@
                         return 'subnet';
                     }
 
-                    // If comments indicate free space
+                    // If name/comments indicate free space
                     if (isFreeSpace) {
                         return 'free-space';
                     }
@@ -1203,68 +1207,138 @@
                     this.lastValidation = now.toLocaleTimeString('cs-CZ');
                 },
 
+                getFreeSpaceScope(row) {
+                    const name = (row['Subnet name'] || '').toLowerCase();
+                    const comments = (row.Comments || '').toLowerCase();
+                    if (name.includes('vnet free space')) return 'vnet';
+                    if (name.includes('subscription free space')) return 'subscription';
+                    if (name.includes('mg free space') || name.includes('management group free space')) return 'management-group';
+                    if (name.includes('network segment free space') || name.includes('segment free space')) return 'network-segment';
+                    if (comments.includes('vnet free space')) return 'vnet';
+                    if (comments.includes('subscription free space')) return 'subscription';
+                    if (comments.includes('mg free space') || comments.includes('management group free space')) return 'management-group';
+                    if (comments.includes('network segment free space') || comments.includes('segment free space')) return 'network-segment';
+                    return null;
+                },
+
                 detectGaps() {
                     this.gaps = [];
-
-                    // Group by VNet for gap detection within VNets
-                    const vnetNetworks = {};
+                    const allNetworks = [];
 
                     this.csvData.forEach((row, idx) => {
                         if (!row.Start || !row.Start.includes('/')) return;
-
-                        const vnet = row['VNet name'] || '__no_vnet__';
-                        const level = this.getRowLevel(row);
-
-                        // Only consider actual subnets and free space for gap detection
-                        if (level !== 'subnet' && level !== 'free-space') return;
-
-                        if (!vnetNetworks[vnet]) {
-                            vnetNetworks[vnet] = [];
-                        }
-
                         try {
                             const net = this.parseNetwork(row.Start);
-                            vnetNetworks[vnet].push({
+                            const level = this.getRowLevel(row);
+                            allNetworks.push({
                                 idx: idx,
                                 rowNum: idx + 2,
                                 subnet: row.Start,
                                 net: net,
-                                row: row
+                                row: row,
+                                level: level,
+                                freeScope: level === 'free-space' ? this.getFreeSpaceScope(row) : null
                             });
                         } catch (e) {
                             // Skip invalid CIDRs
                         }
                     });
 
-                    // Find gaps within each VNet
-                    for (const vnet in vnetNetworks) {
-                        if (vnet === '__no_vnet__') continue;
+                    const scopeLabel = {
+                        'vnet': 'VNet',
+                        'subscription': 'Subscription',
+                        'management-group': 'MG',
+                        'network-segment': 'Network segment'
+                    };
 
-                        const networks = vnetNetworks[vnet];
-                        if (networks.length < 2) continue;
+                    const childPriority = {
+                        'vnet': ['subnet'],
+                        'subscription': ['vnet', 'subnet'],
+                        'management-group': ['subscription', 'vnet', 'subnet'],
+                        'network-segment': ['management-group', 'subscription', 'vnet', 'subnet']
+                    };
 
-                        // Sort by IP
-                        networks.sort((a, b) => a.net.numericStart - b.net.numericStart);
+                    const scopeLevels = ['network-segment', 'management-group', 'subscription', 'vnet'];
 
-                        for (let i = 0; i < networks.length - 1; i++) {
-                            const current = networks[i];
-                            const next = networks[i + 1];
+                    for (const scopeLevel of scopeLevels) {
+                        const scopeRows = allNetworks.filter(n => n.level === scopeLevel);
 
-                            const gapStart = current.net.numericEnd + 1;
-                            const gapEnd = next.net.numericStart - 1;
+                        for (const scopeRow of scopeRows) {
+                            const scopeNet = scopeRow.net;
 
-                            if (gapStart <= gapEnd) {
-                                const gapSize = gapEnd - gapStart + 1;
+                            const inside = allNetworks.filter(n => n.idx !== scopeRow.idx &&
+                                n.net.numericStart >= scopeNet.numericStart &&
+                                n.net.numericEnd <= scopeNet.numericEnd);
 
+                            let chosenLevel = null;
+                            for (const candidateLevel of childPriority[scopeLevel]) {
+                                if (inside.some(n => n.level === candidateLevel)) {
+                                    chosenLevel = candidateLevel;
+                                    break;
+                                }
+                            }
+
+                            let candidates = [];
+                            if (chosenLevel) {
+                                candidates = inside.filter(n => n.level === chosenLevel);
+                            }
+
+                            const freeSpaceCandidates = inside.filter(n => n.level === 'free-space' && n.freeScope === scopeLevel);
+                            candidates = candidates.concat(freeSpaceCandidates);
+
+                            // If no candidates, suggest full free space for the scope
+                            if (candidates.length === 0) {
                                 this.gaps.push({
-                                    start: this.numericToIP(gapStart),
-                                    end: this.numericToIP(gapEnd),
-                                    size: gapSize,
-                                    after: current.subnet,
-                                    afterIdx: current.idx,
-                                    afterRow: current.rowNum,
-                                    vnet: vnet,
-                                    context: current.row
+                                    start: this.numericToIP(scopeNet.numericStart),
+                                    end: this.numericToIP(scopeNet.numericEnd),
+                                    size: scopeNet.numericEnd - scopeNet.numericStart + 1,
+                                    after: scopeRow.subnet,
+                                    afterIdx: scopeRow.idx,
+                                    afterRow: scopeRow.rowNum,
+                                    scopeType: scopeLevel,
+                                    scopeLabel: scopeLabel[scopeLevel],
+                                    context: scopeRow.row
+                                });
+                                continue;
+                            }
+
+                            candidates.sort((a, b) => a.net.numericStart - b.net.numericStart);
+
+                            let cursor = scopeNet.numericStart;
+                            let lastCandidate = null;
+
+                            for (const cand of candidates) {
+                                if (cand.net.numericStart > cursor) {
+                                    const gapStart = cursor;
+                                    const gapEnd = cand.net.numericStart - 1;
+                                    this.gaps.push({
+                                        start: this.numericToIP(gapStart),
+                                        end: this.numericToIP(gapEnd),
+                                        size: gapEnd - gapStart + 1,
+                                        after: lastCandidate ? lastCandidate.subnet : scopeRow.subnet,
+                                        afterIdx: lastCandidate ? lastCandidate.idx : scopeRow.idx,
+                                        afterRow: lastCandidate ? lastCandidate.rowNum : scopeRow.rowNum,
+                                        scopeType: scopeLevel,
+                                        scopeLabel: scopeLabel[scopeLevel],
+                                        context: scopeRow.row
+                                    });
+                                }
+
+                                cursor = Math.max(cursor, cand.net.numericEnd + 1);
+                                lastCandidate = cand;
+                            }
+
+                            if (cursor <= scopeNet.numericEnd) {
+                                this.gaps.push({
+                                    start: this.numericToIP(cursor),
+                                    end: this.numericToIP(scopeNet.numericEnd),
+                                    size: scopeNet.numericEnd - cursor + 1,
+                                    after: lastCandidate ? lastCandidate.subnet : scopeRow.subnet,
+                                    afterIdx: lastCandidate ? lastCandidate.idx : scopeRow.idx,
+                                    afterRow: lastCandidate ? lastCandidate.rowNum : scopeRow.rowNum,
+                                    scopeType: scopeLevel,
+                                    scopeLabel: scopeLabel[scopeLevel],
+                                    context: scopeRow.row
                                 });
                             }
                         }
@@ -1283,9 +1357,9 @@
                         addressSpace: '',
                         type: '',
                         purpose: '',
-                        name: '',
+                        name: `${gap.scopeLabel} free space`,
                         available: '',
-                        comments: 'Vnet free space'
+                        comments: ''
                     };
                     this.updateNewSubnet();
                 },
@@ -1311,9 +1385,9 @@
                             'Start': `${gap.start}/${prefix}`,
                             'Address space': `${gap.start} - ${this.numericToIP(net.numericEnd)}`,
                             'Subnet purpose': '',
-                            'Subnet name': '',
+                            'Subnet name': `${gap.scopeLabel} free space`,
                             'Available addresses': this.calculateAvailableIPs(prefix).toString(),
-                            'Comments': 'Vnet free space'
+                            'Comments': ''
                         };
 
                         this.csvData.splice(gap.afterIdx + 1, 0, newRow);
@@ -1562,9 +1636,10 @@
                 },
 
                 updateSubnetName() {
+                    const currentName = (this.newSubnet.name || '').toLowerCase();
                     if (this.newSubnet.purpose && this.newSubnet.purpose.toLowerCase() !== 'free space') {
                         this.newSubnet.name = `${this.newSubnet.purpose}-${this.newSubnet.start.replace('/', '-')}`;
-                    } else {
+                    } else if (!currentName.includes('free space')) {
                         this.newSubnet.name = '';
                     }
                 },
