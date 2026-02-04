@@ -428,15 +428,25 @@
                 </div>
 
                 <!-- Legend inline -->
-                <div class="flex items-center gap-1 flex-wrap">
-                    <span class="legend-item" style="background-color: #C6EFCE;">Reg</span>
-                    <span class="legend-item" style="background-color: #A9D08E;">Seg</span>
-                    <span class="legend-item" style="background-color: #70AD47; color: white;">MG</span>
-                    <span class="legend-item" style="background-color: #92D050;">Sub</span>
-                    <span class="legend-item" style="background-color: #FFC000;">VNet</span>
-                    <span class="legend-item" style="background-color: #FFFFFF;">Subnet</span>
-                    <span class="legend-item" style="background-color: #E7E6E6;">Free</span>
-                    <span class="legend-item" style="background-color: #FFC7CE; color: #9C0006;">Err</span>
+                <div class="flex items-center gap-2 flex-wrap justify-end">
+                    <div class="flex items-center gap-1 flex-wrap justify-end">
+                        <span class="legend-item" style="background-color: #C6EFCE;">Reg</span>
+                        <span class="legend-item" style="background-color: #A9D08E;">Seg</span>
+                        <span class="legend-item" style="background-color: #70AD47; color: white;">MG</span>
+                        <span class="legend-item" style="background-color: #92D050;">Sub</span>
+                        <span class="legend-item" style="background-color: #FFC000;">VNet</span>
+                        <span class="legend-item" style="background-color: #FFFFFF;">Subnet</span>
+                        <span class="legend-item" style="background-color: #E7E6E6;">Free</span>
+                        <span class="legend-item" style="background-color: #FFC7CE; color: #9C0006;">Err</span>
+                    </div>
+                    <button @click="exportCSV" class="btn btn-gray text-xs px-3 py-2 has-tooltip">
+                        Export
+                        <span class="tooltip">Stahne aktualni CSV</span>
+                    </button>
+                    <button @click="reset" class="btn btn-danger text-xs px-3 py-2 has-tooltip">
+                        Novy soubor
+                        <span class="tooltip">Zahodi zmeny a vrati uvodni obrazovku</span>
+                    </button>
                 </div>
             </div>
 
@@ -446,33 +456,14 @@
                     Validovat
                     <span class="tooltip">Zkontroluje format, prekryvy a poradi IP</span>
                 </button>
-                <button @click="detectGaps" class="btn btn-success text-xs px-3 py-2 has-tooltip">
-                    Free space helper
-                    <span class="tooltip">Najde mezery v IP rozsazich podle scope</span>
-                </button>
-                <button @click="fillAllGaps" class="btn btn-purple text-xs px-3 py-2 has-tooltip" :disabled="!gaps.length">
-                    Doplnit ({{ gaps.length }})
-                    <span class="tooltip">Vlozi free space radky pro vsechny mezery</span>
-                </button>
-                <button @click="sortByIP" class="btn btn-orange text-xs px-3 py-2 has-tooltip">
-                    Seradit dle IP
-                    <span class="tooltip">Seradi radky podle Start IP</span>
-                </button>
+                <!-- Free space helper moved to side panel only -->
                 <button @click="recalculateAll" class="btn btn-indigo text-xs px-3 py-2 has-tooltip">
-                    Prepocitat
+                    Aktualizovat vypocty
                     <span class="tooltip">Prepocita Address space, IPs a Subnet name</span>
                 </button>
-                <button @click="exportCSV" class="btn btn-gray text-xs px-3 py-2 has-tooltip">
-                    Export
-                    <span class="tooltip">Stahne aktualni CSV</span>
-                </button>
-                <button @click="reset" class="btn btn-danger text-xs px-3 py-2 has-tooltip">
-                    Novy soubor
-                    <span class="tooltip">Zahodi zmeny a vrati uvodni obrazovku</span>
-                </button>
                 <button @click="sidePanelOpen = !sidePanelOpen" class="btn text-xs px-3 py-2 has-tooltip" :class="hasIssues ? 'btn-danger' : 'btn-gray'">
-                    {{ sidePanelOpen ? 'Skryt' : 'Zobrazit' }} panel ({{ errorRows.size + warnings.length + gaps.length }})
-                    <span class="tooltip">Zobrazi panel s chybami, varovanimi a mezerami</span>
+                    {{ sidePanelOpen ? 'Skryt' : 'Zobrazit' }} problemy ({{ errorRows.size + warnings.length + gaps.length }})
+                    <span class="tooltip">Panel s chybami, varovanimi a mezerami</span>
                 </button>
                 <button @click="showFilters = !showFilters" class="btn text-xs px-3 py-2 btn-gray has-tooltip">
                     {{ showFilters ? 'Skryt' : 'Zobrazit' }} filtry
@@ -1642,6 +1633,41 @@
                     this.freeSpaceFilter.subscription = value;
                     this.freeSpaceFilter.vnet = value;
                 },
+                selectGapPrefix(gapStart, gapEnd) {
+                    const startNet = this.parseNetwork(`${gapStart}/32`);
+                    const endNet = this.parseNetwork(`${gapEnd}/32`);
+                    const gapSize = endNet.numericStart - startNet.numericStart + 1;
+
+                    for (let prefix = 16; prefix <= 30; prefix++) {
+                        const block = Math.pow(2, 32 - prefix);
+                        if (block <= gapSize && (startNet.numericStart % block === 0)) {
+                            return prefix;
+                        }
+                    }
+
+                    for (let prefix = 30; prefix <= 32; prefix++) {
+                        const block = Math.pow(2, 32 - prefix);
+                        if (startNet.numericStart % block === 0) {
+                            return prefix;
+                        }
+                    }
+
+                    return 32;
+                },
+                buildGapNet(gap) {
+                    const startNet = this.parseNetwork(`${gap.start}/32`);
+                    const endNet = this.parseNetwork(`${gap.end}/32`);
+                    const gapEndNumeric = endNet.numericStart;
+                    let prefix = this.selectGapPrefix(gap.start, gap.end);
+
+                    let net = this.parseNetwork(`${gap.start}/${prefix}`);
+                    while (net.numericEnd > gapEndNumeric && prefix < 32) {
+                        prefix += 1;
+                        net = this.parseNetwork(`${gap.start}/${prefix}`);
+                    }
+
+                    return { net, prefix };
+                },
 
                 detectGaps() {
                     this.gaps = [];
@@ -1708,6 +1734,8 @@
                             let candidates = [];
                             if (chosenLevel) {
                                 candidates = inside.filter(n => n.level === chosenLevel);
+                                const childFreeSpace = inside.filter(n => n.level === 'free-space' && n.freeScope === chosenLevel);
+                                candidates = candidates.concat(childFreeSpace);
                             }
 
                             const freeSpaceCandidates = inside.filter(n => n.level === 'free-space' && n.freeScope === scopeLevel);
@@ -1773,8 +1801,9 @@
                 },
 
                 fillGap(gap) {
-                    const prefix = this.suggestPrefix(gap.size);
-                    const net = this.parseNetwork(`${gap.start}/${prefix}`);
+                    const gapNet = this.buildGapNet(gap);
+                    const prefix = gapNet.prefix;
+                    const net = gapNet.net;
 
                     const templateRow = gap.context;
                     const newRow = {
@@ -1820,8 +1849,9 @@
                     const sortedGaps = [...this.gaps].sort((a, b) => b.afterIdx - a.afterIdx);
 
                     for (const gap of sortedGaps) {
-                        const prefix = this.suggestPrefix(gap.size);
-                        const net = this.parseNetwork(`${gap.start}/${prefix}`);
+                        const gapNet = this.buildGapNet(gap);
+                        const prefix = gapNet.prefix;
+                        const net = gapNet.net;
 
                         const templateRow = gap.context;
                         const newRow = {
@@ -2018,32 +2048,6 @@
                     const row = this.csvData.splice(index, 1)[0];
                     this.csvData.splice(index + 1, 0, row);
                     this.selectedRowIndex = index + 1;
-                    this.calculateGroups();
-                    this.validateAll();
-                    this.detectGaps();
-                },
-
-                sortByIP() {
-                    if (!confirm('Opravdu chcete seradit vsechny radky podle IP adresy?')) return;
-
-                    // Sort rows by Start IP address
-                    this.csvData.sort((a, b) => {
-                        const aStart = a.Start;
-                        const bStart = b.Start;
-
-                        // Rows without Start go to the end
-                        if (!aStart || !aStart.includes('/')) return 1;
-                        if (!bStart || !bStart.includes('/')) return -1;
-
-                        try {
-                            const aNet = this.parseNetwork(aStart);
-                            const bNet = this.parseNetwork(bStart);
-                            return aNet.numericStart - bNet.numericStart;
-                        } catch (e) {
-                            return 0;
-                        }
-                    });
-
                     this.calculateGroups();
                     this.validateAll();
                     this.detectGaps();
