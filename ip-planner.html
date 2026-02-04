@@ -442,43 +442,19 @@
                 </div>
             </div>
 
-            <!-- Config panel -->
-            <div class="mb-3 bg-blue-50 border border-blue-200 rounded p-3 text-xs">
-                <div class="flex flex-wrap items-center gap-4">
-                    <div class="flex items-center gap-2">
-                        <span class="font-semibold text-blue-800">Promenne:</span>
-                        <div v-for="(value, key) in customVariables" :key="key" class="flex items-center gap-1 bg-white border rounded px-2 py-1">
-                            <span class="text-blue-600 font-mono">{{key}}</span>=<input v-model="customVariables[key]" class="w-16 px-1 border-b border-blue-300 bg-transparent text-gray-800 font-mono focus:outline-none" @change="onConfigChange">
-                            <button @click="removeCustomVariable(key)" class="text-red-400 hover:text-red-600 ml-1">&times;</button>
-                        </div>
-                        <button @click="addCustomVariable" class="text-blue-600 hover:text-blue-800 font-bold">+ pridat</button>
-                    </div>
-                    <div class="flex items-center gap-2">
-                        <span class="font-semibold text-blue-800">Vzor nazvu:</span>
-                        <input v-model="subnetNamingPattern" class="w-64 px-2 py-1 border rounded font-mono text-gray-800 bg-white" @change="onConfigChange">
-                        <span class="text-blue-600 cursor-help has-tooltip">?
-                            <span class="tooltip" style="white-space: normal; width: 250px;">Promenne: {purpose}, {start}, {vnet}, {subscription}, {mg}, {segment} + vlastni</span>
-                        </span>
-                    </div>
-                </div>
-                <div class="mt-2 flex items-center justify-between">
-                    <div class="text-blue-700">
-                        <span class="font-medium">Nahled:</span> <span class="font-mono bg-white px-2 py-0.5 rounded">{{ previewSubnetName }}</span>
-                    </div>
-                    <button @click="applyNamingPatternToAll" class="btn btn-primary text-xs px-3 py-1">Aplikovat na vsechny subnety</button>
-                </div>
-            </div>
-
             <!-- Actions -->
             <div class="mb-2 flex flex-wrap gap-2">
                 <button @click="validateAll" class="btn btn-primary text-xs px-3 py-2 has-tooltip">
                     Validovat
                     <span class="tooltip">Zkontroluje format, prekryvy a poradi IP</span>
                 </button>
-                <!-- Free space helper moved to side panel only -->
                 <button @click="recalculateAll" class="btn btn-indigo text-xs px-3 py-2 has-tooltip">
                     Prepocitat pole
                     <span class="tooltip">Prepocita Address space, IPs a Subnet name</span>
+                </button>
+                <button @click="showVnetNaming = !showVnetNaming" class="btn btn-orange text-xs px-3 py-2 has-tooltip">
+                    Prejmenovat VNETy
+                    <span class="tooltip">Nastaveni promennych pro VNet a Subscription nazvy</span>
                 </button>
                 <button @click="sidePanelOpen = !sidePanelOpen" class="btn text-xs px-3 py-2 has-tooltip" :class="hasIssues ? 'btn-danger' : 'btn-gray'">
                     {{ sidePanelOpen ? 'Skryt' : 'Zobrazit' }} problemy ({{ errorRows.size + warnings.length + gaps.length }})
@@ -488,6 +464,27 @@
                     {{ showFilters ? 'Skryt' : 'Zobrazit' }} filtry
                     <span class="tooltip">Filtry pro tabulku a free space helper</span>
                 </button>
+            </div>
+
+            <!-- VNet naming panel -->
+            <div v-if="showVnetNaming" class="mb-3 bg-orange-50 border border-orange-200 rounded p-3 text-xs">
+                <div class="flex items-center justify-between mb-2">
+                    <span class="font-semibold text-orange-800">Nastaveni promennych pro VNet/Subscription</span>
+                    <button @click="showVnetNaming = false" class="text-orange-400 hover:text-orange-600">&times;</button>
+                </div>
+                <div class="flex flex-wrap items-center gap-4 mb-3">
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <span class="text-orange-700">Promenne:</span>
+                        <div v-for="(value, key) in customVariables" :key="key" class="flex items-center gap-1 bg-white border rounded px-2 py-1">
+                            <span class="text-orange-600 font-mono">{{key}}</span>=<input v-model="customVariables[key]" class="w-20 px-1 border-b border-orange-300 bg-transparent text-gray-800 font-mono focus:outline-none" @change="onConfigChange">
+                            <button @click="removeCustomVariable(key)" class="text-red-400 hover:text-red-600 ml-1">&times;</button>
+                        </div>
+                        <button @click="addCustomVariable" class="text-orange-600 hover:text-orange-800 font-bold">+ pridat</button>
+                    </div>
+                </div>
+                <div class="text-orange-700 text-[11px]">
+                    Tyto promenne lze pouzit ve vzorech pojmenovani. Ukladaji se do CSV jako #CONFIG radek.
+                </div>
             </div>
             <div v-if="autoFixNotice" class="mb-3 text-xs text-orange-700 bg-orange-50 border border-orange-200 rounded px-3 py-2">
                 {{ autoFixNotice }}
@@ -566,7 +563,7 @@
                             <th class="px-2 py-2 text-left header-calculated">Start</th>
                             <th class="px-2 py-2 text-left header-calculated">Address Space</th>
                             <th class="px-2 py-2 text-left header-editable">Purpose</th>
-                            <th class="px-2 py-2 text-left header-calculated">SUBNET NAME</th>
+                            <th class="px-2 py-2 text-left header-calculated cursor-pointer hover:bg-blue-700" @dblclick="showNamingModal = true" title="Dvojklik pro nastaveni vzoru nazvu">SUBNET NAME</th>
                             <th class="px-2 py-2 text-left header-calculated">IPs</th>
                             <th class="px-2 py-2 text-left header-editable">Comments</th>
                             <th class="px-2 py-2 text-left header-editable">Akce</th>
@@ -873,6 +870,45 @@
                 </div>
             </div>
         </div>
+
+        <!-- Subnet Naming Pattern Modal -->
+        <div v-if="showNamingModal" class="fixed inset-0 modal-overlay flex items-center justify-center z-50" @click.self="showNamingModal = false">
+            <div class="modal-content p-5 max-w-lg w-full mx-4 max-h-[85vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="text-lg font-bold text-gray-800">Vzor nazvu subnetu</h2>
+                    <button @click="showNamingModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+                </div>
+
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-700 mb-2">Vzor pro generovani nazvu:</label>
+                    <input v-model="subnetNamingPattern" class="w-full p-3 border rounded font-mono text-sm" placeholder="{purpose}-subnet-{region}-{start}">
+                </div>
+
+                <div class="mb-4 bg-gray-50 border rounded p-3">
+                    <div class="text-xs font-semibold text-gray-600 mb-2">Dostupne promenne:</div>
+                    <div class="grid grid-cols-2 gap-2 text-xs">
+                        <div v-for="v in namingPatternVariables" :key="v.name" class="flex items-center gap-2">
+                            <code class="px-2 py-1 bg-blue-100 text-blue-800 rounded cursor-pointer hover:bg-blue-200" @click="subnetNamingPattern += v.name">{{ v.name }}</code>
+                            <span class="text-gray-500">{{ v.desc }}</span>
+                        </div>
+                        <div v-for="(value, key) in customVariables" :key="'custom-'+key" class="flex items-center gap-2">
+                            <code class="px-2 py-1 bg-orange-100 text-orange-800 rounded cursor-pointer hover:bg-orange-200" @click="subnetNamingPattern += '{'+key+'}'">{{ '{'+key+'}' }}</code>
+                            <span class="text-gray-500">= {{ value }}</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mb-4 bg-green-50 border border-green-200 rounded p-3">
+                    <div class="text-xs font-semibold text-green-700 mb-1">Nahled:</div>
+                    <div class="font-mono text-sm text-green-800">{{ previewSubnetName }}</div>
+                </div>
+
+                <div class="flex justify-end gap-2 pt-3 border-t">
+                    <button @click="showNamingModal = false" class="btn btn-gray">Zavrit</button>
+                    <button @click="applyNamingPatternToAll" class="btn btn-primary">Aplikovat na vsechny subnety</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -932,7 +968,8 @@
                     vnetGroups: [],
                     // Subnet naming pattern and custom variables
                     showNamingModal: false,
-                    subnetNamingPattern: '{company}-{purpose}-subnet-{region}-{start}',
+                    showVnetNaming: false,
+                    subnetNamingPattern: '{purpose}-subnet-{region}-{start}',
                     customVariables: {
                         region: 'gwc',
                         company: 'sfr'
@@ -2879,6 +2916,7 @@
                         }
                     });
 
+                    this.showNamingModal = false;
                     if (updated > 0) {
                         this.autoFixNotice = `Aktualizovano ${updated} nazvu subnetu.`;
                         setTimeout(() => { this.autoFixNotice = ''; }, 3000);
