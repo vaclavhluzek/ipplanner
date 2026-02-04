@@ -145,10 +145,12 @@
             font-size: inherit;
             font-family: inherit;
             background: white !important;
+            color: #1a1a1a !important;
             box-sizing: border-box;
         }
         .edit-input:focus {
             background: #FFF9C4 !important;
+            color: #1a1a1a !important;
         }
 
         /* Stats cards - compact */
@@ -458,7 +460,7 @@
                 </button>
                 <!-- Free space helper moved to side panel only -->
                 <button @click="recalculateAll" class="btn btn-indigo text-xs px-3 py-2 has-tooltip">
-                    Aktualizovat vypocty
+                    Prepocitat pole
                     <span class="tooltip">Prepocita Address space, IPs a Subnet name</span>
                 </button>
                 <button @click="sidePanelOpen = !sidePanelOpen" class="btn text-xs px-3 py-2 has-tooltip" :class="hasIssues ? 'btn-danger' : 'btn-gray'">
