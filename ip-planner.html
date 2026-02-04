@@ -2166,12 +2166,76 @@
                 },
 
                 deleteRow(index) {
-                    if (confirm(`Opravdu chcete smazat radek ${index + 2}?`)) {
-                        this.csvData.splice(index, 1);
-                        this.calculateGroups();
-                        this.validateAll();
-                        this.detectGaps();
+                    const row = this.csvData[index];
+                    const start = row.Start;
+
+                    // Check if this row has child rows within its IP range
+                    let childIndices = [];
+                    if (start && start.includes('/')) {
+                        try {
+                            const parentNet = this.parseNetwork(start);
+
+                            // Find all rows whose IP falls strictly within this range
+                            this.csvData.forEach((r, idx) => {
+                                if (idx === index) return;
+                                if (!r.Start || !r.Start.includes('/')) return;
+
+                                try {
+                                    const childNet = this.parseNetwork(r.Start);
+                                    // Check if child is strictly inside parent range
+                                    if (childNet.numericStart >= parentNet.numericStart &&
+                                        childNet.numericEnd <= parentNet.numericEnd &&
+                                        childNet.prefix > parentNet.prefix) {
+                                        childIndices.push(idx);
+                                    }
+                                } catch (e) {
+                                    // Skip invalid CIDRs
+                                }
+                            });
+                        } catch (e) {
+                            // Invalid parent CIDR, no children to find
+                        }
                     }
+
+                    if (childIndices.length > 0) {
+                        // Has children - ask what to do
+                        const level = this.getRowLevel(row);
+                        const levelNames = {
+                            'region': 'Region',
+                            'network-segment': 'Network segment',
+                            'management-group': 'Management Group',
+                            'subscription': 'Subscription',
+                            'vnet': 'VNet',
+                            'subnet': 'Subnet',
+                            'free-space': 'Free space'
+                        };
+                        const levelName = levelNames[level] || 'Radek';
+
+                        const choice = confirm(
+                            `${levelName} "${start}" obsahuje ${childIndices.length} podrizených radku.\n\n` +
+                            `Klikni OK pro smazani VSECH (${childIndices.length + 1} radku)\n` +
+                            `Klikni Zrusit pro smazani pouze tohoto radku`
+                        );
+
+                        if (choice) {
+                            // Delete all - sort indices descending to maintain correct positions
+                            const allIndices = [index, ...childIndices].sort((a, b) => b - a);
+                            for (const idx of allIndices) {
+                                this.csvData.splice(idx, 1);
+                            }
+                        } else {
+                            // Delete only parent
+                            this.csvData.splice(index, 1);
+                        }
+                    } else {
+                        // No children - simple delete with confirmation
+                        if (!confirm(`Opravdu chcete smazat radek ${index + 2}?`)) return;
+                        this.csvData.splice(index, 1);
+                    }
+
+                    this.calculateGroups();
+                    this.validateAll();
+                    this.detectGaps();
                 },
 
                 moveRowUp(index) {

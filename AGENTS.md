@@ -59,6 +59,15 @@ When editing the `Start` column, the app detects all child rows (subnets within 
 - `onStartEdit()` compares old vs new IP and calls `cascadeIPChanges()` if different
 - `cascadeIPChanges()` finds all child rows (strictly inside old range, smaller prefix), calculates offset, and updates their Start, Address space, and Subnet name
 
+### 4. Cascading delete - NEW FEATURE
+When deleting a row that has child rows within its IP range, the user is asked whether to delete all children or just the parent.
+
+**Implementation details:**
+- `deleteRow()` first finds all child rows (IPs strictly inside parent range with larger prefix)
+- If children exist, shows confirm dialog with count and options
+- OK = delete parent + all children; Cancel = delete only parent
+- Indices are sorted descending before deletion to maintain correct positions
+
 ## Remaining Limitations
 
 - Overlaps are only checked between subnets/free-space, not between all allocation levels

@@ -49,6 +49,7 @@ There is no build system. All UI, styles, and logic are in `ip-planner.html`.
 1. **Fixed `pendingRows` bug** - Removed undefined reference that caused error when filling gaps
 2. **Improved gap filling** - Gaps are now split into multiple properly aligned CIDR blocks for complete coverage
 3. **Cascading IP changes** - When editing a parent IP (e.g. VNet), all child subnets are automatically updated with the same offset
+4. **Cascading delete** - When deleting a parent row (e.g. Subscription), option to delete all child subnets within its IP range
 
 ## Known Limitations
 
