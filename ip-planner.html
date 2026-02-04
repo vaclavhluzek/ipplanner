@@ -774,6 +774,29 @@
                 </div>
             </div>
         </div>
+
+        <!-- CSV Columns Modal -->
+        <div v-if="showCsvColumnsModal" class="fixed inset-0 modal-overlay flex items-center justify-center z-50" @click.self="showCsvColumnsModal = false">
+            <div class="modal-content p-5 max-w-xl w-full mx-4 max-h-[85vh] overflow-y-auto">
+                <div class="flex items-center justify-between mb-3">
+                    <h2 class="text-lg font-bold text-gray-800">Nezname sloupce v CSV</h2>
+                    <button @click="showCsvColumnsModal = false" class="text-gray-400 hover:text-gray-600 text-xl">&times;</button>
+                </div>
+                <p class="text-sm text-gray-600 mb-3">
+                    Nalezeny sloupce, ktere neumi aplikace priradit. Vyberte, co s nimi udelat.
+                </p>
+                <div class="bg-gray-50 border rounded p-3 text-xs text-gray-700 mb-4">
+                    <div class="font-semibold mb-1">Nezname sloupce:</div>
+                    <div class="flex flex-wrap gap-2">
+                        <span v-for="h in csvExtraHeaders" :key="h" class="px-2 py-1 bg-white border rounded">{{ h }}</span>
+                    </div>
+                </div>
+                <div class="flex justify-end gap-2 pt-2 border-t">
+                    <button @click="applyCsvExtraAction('drop')" class="btn btn-gray">Zahodit</button>
+                    <button @click="applyCsvExtraAction('comments')" class="btn btn-primary">Pridat do Comments</button>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -802,6 +825,10 @@
                     errorRows: new Set(),
                     warningRows: new Set(),
                     showAddModal: false,
+                    showCsvColumnsModal: false,
+                    csvExtraHeaders: [],
+                    csvPendingRows: [],
+                    csvPendingExtras: [],
                     selectedRowIndex: -1,
                     editingCell: null,
                     editOriginalValue: '',
@@ -957,20 +984,120 @@
                 parseCSV(text) {
                     const lines = text.split('\n');
                     const headers = lines[0].split(';').map(h => h.trim().replace(/^\uFEFF/, ''));
+                    const expectedHeaders = [
+                        'Region',
+                        'Network segment',
+                        'Management Group',
+                        'Subscription',
+                        'VNet name',
+                        'Subnet type',
+                        'Start',
+                        'Address space',
+                        'Subnet purpose',
+                        'Subnet name',
+                        'Available addresses',
+                        'Comments'
+                    ];
 
-                    this.csvData = [];
+                    const mgHeaders = headers.filter(h => h.toLowerCase().includes('management group'));
+                    const purposeHeaders = headers.filter(h => h.toLowerCase().includes('purpose'));
+                    const extraHeaders = headers.filter(h =>
+                        h &&
+                        !expectedHeaders.includes(h) &&
+                        !mgHeaders.includes(h) &&
+                        !purposeHeaders.includes(h)
+                    );
+
+                    const baseRows = [];
+                    const extrasRows = [];
+
                     for (let i = 1; i < lines.length; i++) {
                         if (!lines[i].trim()) continue;
 
                         const values = lines[i].split(';');
                         const row = {};
-                        headers.forEach((header, idx) => {
-                            row[header] = values[idx] ? values[idx].trim() : '';
+                        expectedHeaders.forEach(h => {
+                            row[h] = '';
                         });
-                        this.csvData.push(row);
+
+                        let mgValues = [];
+                        let purposeValues = [];
+                        headers.forEach((header, idx) => {
+                            const value = values[idx] ? values[idx].trim() : '';
+
+                            if (mgHeaders.includes(header)) {
+                                if (value) mgValues.push(value);
+                                return;
+                            }
+
+                            if (purposeHeaders.includes(header) && header !== 'Subnet purpose') {
+                                if (value) purposeValues.push(value);
+                                return;
+                            }
+
+                            if (expectedHeaders.includes(header)) {
+                                row[header] = value;
+                            }
+                        });
+
+                        if (mgValues.length) {
+                            row['Management Group'] = mgValues.join('; ');
+                        }
+                        if (purposeValues.length) {
+                            if (row['Subnet purpose']) {
+                                row['Subnet purpose'] = `${row['Subnet purpose']}; ${purposeValues.join('; ')}`;
+                            } else {
+                                row['Subnet purpose'] = purposeValues.join('; ');
+                            }
+                        }
+
+                        const extras = [];
+                        headers.forEach((header, idx) => {
+                            if (!extraHeaders.includes(header)) return;
+                            const value = values[idx] ? values[idx].trim() : '';
+                            if (value) extras.push(value);
+                        });
+
+                        baseRows.push(row);
+                        extrasRows.push(extras);
                     }
 
+                    if (extraHeaders.length) {
+                        this.csvExtraHeaders = extraHeaders;
+                        this.csvPendingRows = baseRows;
+                        this.csvPendingExtras = extrasRows;
+                        this.showCsvColumnsModal = true;
+                        return;
+                    }
+
+                    this.csvData = baseRows;
                     this.calculateGroups();
+                },
+                applyCsvExtraAction(action) {
+                    const rows = this.csvPendingRows || [];
+                    const extrasRows = this.csvPendingExtras || [];
+
+                    if (action === 'comments') {
+                        rows.forEach((row, idx) => {
+                            const extras = extrasRows[idx] || [];
+                            if (!extras.length) return;
+                            const extraText = extras.join('; ');
+                            if (row.Comments) {
+                                row.Comments = `${row.Comments}; ${extraText}`;
+                            } else {
+                                row.Comments = extraText;
+                            }
+                        });
+                    }
+
+                    this.csvData = rows;
+                    this.csvExtraHeaders = [];
+                    this.csvPendingRows = [];
+                    this.csvPendingExtras = [];
+                    this.showCsvColumnsModal = false;
+                    this.calculateGroups();
+                    this.validateAll();
+                    this.detectGaps();
                 },
                 calculateGroups() {
                     this.segmentGroups = [];
