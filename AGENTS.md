@@ -29,8 +29,8 @@ The app expects semicolon-separated CSV with these headers (case-sensitive):
   - Overlaps
   - Subnet not contained in parent scope (segment/MG/subscription/VNet)
   - Incorrect order by `Start`
-- Gap detection between networks (per VNet) and auto-fill with `Vnet free space` rows.
-- Actions: validate, detect gaps, fill gaps, sort by IP, recalculate, export, reset.
+- Gap detection between networks (per VNet) and auto-fill with `<scope> free space` rows.
+- Actions: validate, detect gaps, fill gaps, recalculate, export, reset.
 
 ## Editing Guidance For LLMs
 - Keep everything in `ip-planner.html` unless explicitly asked to split files.
@@ -42,3 +42,43 @@ The app expects semicolon-separated CSV with these headers (case-sensitive):
 - `ip-planner.html`: All UI, logic, and styles.
 - `README.md`: Human-facing usage notes.
 - `AGENTS.md`: This file.
+
+## Fixed Bugs & New Features (2026-02-04)
+
+### 1. `pendingRows` undefined - FIXED
+Removed the undefined `pendingRows.add()` call. The `_pending: true` flag on rows already handles the pending state UI.
+
+### 2. Gap prefix alignment - FIXED
+Added `splitGapIntoCIDRs()` function that properly splits gaps into multiple aligned CIDR blocks. Now a gap like `10.0.1.0 - 10.0.2.255` correctly generates two `/24` entries.
+
+### 3. Cascading IP changes - NEW FEATURE
+When editing the `Start` column, the app detects all child rows (subnets within the parent range) and offers to update them automatically with the same IP offset.
+
+**Implementation details:**
+- `startEdit()` stores the original network when editing Start column (`editOriginalNetwork`)
+- `onStartEdit()` compares old vs new IP and calls `cascadeIPChanges()` if different
+- `cascadeIPChanges()` finds all child rows (strictly inside old range, smaller prefix), calculates offset, and updates their Start, Address space, and Subnet name
+
+## Remaining Limitations
+
+- Overlaps are only checked between subnets/free-space, not between all allocation levels
+- Very large gaps may generate up to 100 CIDR blocks (safety limit)
+
+## Suggested Improvements
+
+### High Value
+1. Undo/redo stack (store snapshots of `csvData`)
+2. Keyboard shortcuts (Ctrl+Z undo, Ctrl+S export, arrows + Enter for navigation)
+3. Sort by IP address (automatic reordering of rows)
+
+### Medium Value
+4. Bulk row selection and operations
+5. Text search across all columns
+6. Column visibility toggle
+7. Import Excel .xlsx (SheetJS library)
+
+### Low Priority
+8. Dark mode toggle
+9. Print-optimized CSS
+10. Sticky row numbers column
+11. Drag-and-drop row reordering

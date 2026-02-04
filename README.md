@@ -37,9 +37,39 @@ Notes:
 - Available addresses assume Azure behavior (total minus 5).
 
 ## Tips
-- Use **Seradit dle IP** before validation if rows are out of order.
 - **Hledat mezery** finds gaps within each VNet scope.
-- **Doplnit** inserts free-space rows marked `Vnet free space`.
+- **Doplnit** inserts free-space rows marked `<scope> free space`.
+- Use arrow buttons in the Actions column to reorder rows manually.
 
 ## Development
 There is no build system. All UI, styles, and logic are in `ip-planner.html`.
+
+## Recent Fixes (2026-02-04)
+
+1. **Fixed `pendingRows` bug** - Removed undefined reference that caused error when filling gaps
+2. **Improved gap filling** - Gaps are now split into multiple properly aligned CIDR blocks for complete coverage
+3. **Cascading IP changes** - When editing a parent IP (e.g. VNet), all child subnets are automatically updated with the same offset
+
+## Known Limitations
+
+### Validation
+- Overlaps are only checked between subnets and free-space rows, not between all allocation levels
+
+### Gap Filling
+- Very large gaps may generate many small CIDR blocks (up to 100 max)
+
+## Potential Improvements
+
+### Medium Priority
+1. **Undo/Redo** - Track changes and allow reverting
+2. **Sort by IP** - Automatic reordering of rows by IP address
+3. **Bulk operations** - Select multiple rows for delete/move
+4. **Search/filter by text** - Find rows containing specific text
+5. **Keyboard navigation** - Arrow keys, Tab for editing, Ctrl+S for export
+6. **Import from Excel** - Parse .xlsx directly (using SheetJS)
+
+### Low Priority
+7. **Dark mode** - User preference toggle
+8. **Column resizing** - Drag to resize columns
+9. **Sticky first column** - Keep row numbers visible while scrolling
+10. **Print view** - Optimized CSS for printing

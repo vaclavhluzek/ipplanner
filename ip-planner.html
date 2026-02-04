@@ -891,6 +891,7 @@
                     selectedRowIndex: -1,
                     editingCell: null,
                     editOriginalValue: '',
+                    editOriginalNetwork: null,
                     dragOver: false,
                     lastValidation: '',
                     sidePanelOpen: false,
@@ -1633,6 +1634,51 @@
                     this.freeSpaceFilter.subscription = value;
                     this.freeSpaceFilter.vnet = value;
                 },
+                // Find the largest CIDR block that starts at the given IP and fits within the gap
+                findLargestAlignedBlock(startNumeric, endNumeric) {
+                    const gapSize = endNumeric - startNumeric + 1;
+
+                    // Try prefixes from largest (/16) to smallest (/32)
+                    for (let prefix = 16; prefix <= 32; prefix++) {
+                        const blockSize = Math.pow(2, 32 - prefix);
+                        // Check if start is aligned to this block size
+                        if ((startNumeric % blockSize) === 0) {
+                            // Check if block fits within gap
+                            if (blockSize <= gapSize) {
+                                return { prefix, blockSize };
+                            }
+                        }
+                    }
+                    return { prefix: 32, blockSize: 1 };
+                },
+
+                // Split a gap into multiple properly aligned CIDR blocks
+                splitGapIntoCIDRs(gapStartIP, gapEndIP) {
+                    const blocks = [];
+                    let cursor = this.parseNetwork(`${gapStartIP}/32`).numericStart;
+                    const endNumeric = this.parseNetwork(`${gapEndIP}/32`).numericStart;
+
+                    while (cursor <= endNumeric) {
+                        const remaining = endNumeric - cursor + 1;
+                        const { prefix, blockSize } = this.findLargestAlignedBlock(cursor, endNumeric);
+
+                        const blockEnd = cursor + blockSize - 1;
+                        blocks.push({
+                            start: this.numericToIP(cursor),
+                            end: this.numericToIP(blockEnd),
+                            prefix: prefix,
+                            size: blockSize
+                        });
+
+                        cursor = blockEnd + 1;
+
+                        // Safety check to prevent infinite loops
+                        if (blocks.length > 100) break;
+                    }
+
+                    return blocks;
+                },
+
                 selectGapPrefix(gapStart, gapEnd) {
                     const startNet = this.parseNetwork(`${gapStart}/32`);
                     const endNet = this.parseNetwork(`${gapEnd}/32`);
@@ -1801,33 +1847,35 @@
                 },
 
                 fillGap(gap) {
-                    const gapNet = this.buildGapNet(gap);
-                    const prefix = gapNet.prefix;
-                    const net = gapNet.net;
-
+                    // Split gap into multiple properly aligned CIDR blocks
+                    const blocks = this.splitGapIntoCIDRs(gap.start, gap.end);
                     const templateRow = gap.context;
-                    const newRow = {
-                        'Region': templateRow.Region || '',
-                        'Network segment': templateRow['Network segment'] || '',
-                        'Management Group': templateRow['Management Group'] || '',
-                        'Subscription': templateRow.Subscription || '',
-                        'VNet name': templateRow['VNet name'] || '',
-                        'Subnet type': '',
-                        'Start': `${gap.start}/${prefix}`,
-                        'Address space': `${gap.start} - ${this.numericToIP(net.numericEnd)}`,
-                        'Subnet purpose': '',
-                        'Subnet name': `${gap.scopeLabel} free space`,
-                        'Available addresses': this.calculateAvailableIPs(prefix).toString(),
-                        'Comments': '',
-                        _pending: true
-                    };
 
+                    // Insert blocks in reverse order to maintain correct indices
                     const insertIndex = gap.afterIdx + 1;
-                    this.csvData.splice(insertIndex, 0, newRow);
+                    for (let i = blocks.length - 1; i >= 0; i--) {
+                        const block = blocks[i];
+                        const newRow = {
+                            'Region': templateRow.Region || '',
+                            'Network segment': templateRow['Network segment'] || '',
+                            'Management Group': templateRow['Management Group'] || '',
+                            'Subscription': templateRow.Subscription || '',
+                            'VNet name': templateRow['VNet name'] || '',
+                            'Subnet type': '',
+                            'Start': `${block.start}/${block.prefix}`,
+                            'Address space': `${block.start} - ${block.end}`,
+                            'Subnet purpose': '',
+                            'Subnet name': `${gap.scopeLabel} free space`,
+                            'Available addresses': this.calculateAvailableIPs(block.prefix).toString(),
+                            'Comments': '',
+                            _pending: true
+                        };
+                        this.csvData.splice(insertIndex, 0, newRow);
+                    }
+
                     this.calculateGroups();
                     this.validateAll();
                     this.detectGaps();
-                    this.pendingRows.add(insertIndex);
                 },
                 confirmPendingRow(index, keep) {
                     if (!keep) {
@@ -1849,27 +1897,30 @@
                     const sortedGaps = [...this.gaps].sort((a, b) => b.afterIdx - a.afterIdx);
 
                     for (const gap of sortedGaps) {
-                        const gapNet = this.buildGapNet(gap);
-                        const prefix = gapNet.prefix;
-                        const net = gapNet.net;
-
+                        // Split gap into multiple properly aligned CIDR blocks
+                        const blocks = this.splitGapIntoCIDRs(gap.start, gap.end);
                         const templateRow = gap.context;
-                        const newRow = {
-                            'Region': templateRow.Region || '',
-                            'Network segment': templateRow['Network segment'] || '',
-                            'Management Group': templateRow['Management Group'] || '',
-                            'Subscription': templateRow.Subscription || '',
-                            'VNet name': templateRow['VNet name'] || '',
-                            'Subnet type': '',
-                            'Start': `${gap.start}/${prefix}`,
-                            'Address space': `${gap.start} - ${this.numericToIP(net.numericEnd)}`,
-                            'Subnet purpose': '',
-                            'Subnet name': `${gap.scopeLabel} free space`,
-                            'Available addresses': this.calculateAvailableIPs(prefix).toString(),
-                            'Comments': ''
-                        };
+                        const insertIndex = gap.afterIdx + 1;
 
-                        this.csvData.splice(gap.afterIdx + 1, 0, newRow);
+                        // Insert blocks in reverse order to maintain correct indices
+                        for (let i = blocks.length - 1; i >= 0; i--) {
+                            const block = blocks[i];
+                            const newRow = {
+                                'Region': templateRow.Region || '',
+                                'Network segment': templateRow['Network segment'] || '',
+                                'Management Group': templateRow['Management Group'] || '',
+                                'Subscription': templateRow.Subscription || '',
+                                'VNet name': templateRow['VNet name'] || '',
+                                'Subnet type': '',
+                                'Start': `${block.start}/${block.prefix}`,
+                                'Address space': `${block.start} - ${block.end}`,
+                                'Subnet purpose': '',
+                                'Subnet name': `${gap.scopeLabel} free space`,
+                                'Available addresses': this.calculateAvailableIPs(block.prefix).toString(),
+                                'Comments': ''
+                            };
+                            this.csvData.splice(insertIndex, 0, newRow);
+                        }
                     }
 
                     this.calculateGroups();
@@ -1887,6 +1938,20 @@
                 startEdit(rowIndex, column, event) {
                     this.editingCell = { row: rowIndex, column: column };
                     this.editOriginalValue = this.csvData[rowIndex][column];
+
+                    // Store old network info when editing Start column for cascading updates
+                    if (column === 'Start') {
+                        const oldStart = this.csvData[rowIndex].Start;
+                        if (oldStart && oldStart.includes('/')) {
+                            try {
+                                this.editOriginalNetwork = this.parseNetwork(oldStart);
+                            } catch (e) {
+                                this.editOriginalNetwork = null;
+                            }
+                        } else {
+                            this.editOriginalNetwork = null;
+                        }
+                    }
 
                     // Use setTimeout to wait for Vue to render the input
                     setTimeout(() => {
@@ -1916,10 +1981,86 @@
                 },
 
                 onStartEdit(index) {
+                    const row = this.csvData[index];
+                    const newStart = row.Start;
+                    const oldNetwork = this.editOriginalNetwork;
+
                     this.stopEdit();
+
+                    // Check if we should cascade changes to child rows
+                    if (oldNetwork && newStart && newStart.includes('/')) {
+                        try {
+                            const newNetwork = this.parseNetwork(newStart);
+
+                            // Only cascade if the network actually changed
+                            if (oldNetwork.numericStart !== newNetwork.numericStart) {
+                                this.cascadeIPChanges(index, oldNetwork, newNetwork);
+                            }
+                        } catch (e) {
+                            // Invalid new CIDR, just recalculate this row
+                        }
+                    }
+
+                    this.editOriginalNetwork = null;
                     this.recalculateRow(index);
                     this.validateAll();
                     this.detectGaps();
+                },
+
+                // Cascade IP changes to all child rows within the old range
+                cascadeIPChanges(parentIndex, oldNetwork, newNetwork) {
+                    const offset = newNetwork.numericStart - oldNetwork.numericStart;
+                    const childRows = [];
+
+                    // Find all rows whose IP falls strictly within the old parent range (excluding parent itself)
+                    this.csvData.forEach((row, idx) => {
+                        if (idx === parentIndex) return;
+                        if (!row.Start || !row.Start.includes('/')) return;
+
+                        try {
+                            const childNet = this.parseNetwork(row.Start);
+
+                            // Check if child is strictly inside the old parent range
+                            if (childNet.numericStart >= oldNetwork.numericStart &&
+                                childNet.numericEnd <= oldNetwork.numericEnd &&
+                                childNet.prefix > oldNetwork.prefix) {
+                                childRows.push({ idx, childNet, row });
+                            }
+                        } catch (e) {
+                            // Skip invalid CIDRs
+                        }
+                    });
+
+                    if (childRows.length === 0) return;
+
+                    // Ask user for confirmation
+                    const confirmMsg = `Chcete automaticky upravit ${childRows.length} podrizených IP adres?\n\n` +
+                        `Zmena: ${this.numericToIP(oldNetwork.numericStart)} → ${this.numericToIP(newNetwork.numericStart)}\n` +
+                        `Posun: ${offset >= 0 ? '+' : ''}${offset} adres`;
+
+                    if (!confirm(confirmMsg)) return;
+
+                    // Apply offset to all child rows
+                    for (const { idx, childNet, row } of childRows) {
+                        const newChildStart = childNet.numericStart + offset;
+                        const newChildEnd = childNet.numericEnd + offset;
+
+                        // Update Start
+                        row.Start = `${this.numericToIP(newChildStart)}/${childNet.prefix}`;
+
+                        // Recalculate Address space and Available addresses
+                        row['Address space'] = `${this.numericToIP(newChildStart)} - ${this.numericToIP(newChildEnd)}`;
+                        row['Available addresses'] = this.calculateAvailableIPs(childNet.prefix).toString();
+
+                        // Update Subnet name if it contains the IP
+                        const purpose = row['Subnet purpose'];
+                        const azureSpecial = ['AzureBastionSubnet', 'GatewaySubnet', 'RouterServerSubnet', 'AzureFirewallSubnet', 'AzureFirewallManagementSubnet'];
+                        if (purpose && !azureSpecial.includes(purpose)) {
+                            row['Subnet name'] = `${purpose}-${row.Start.replace('/', '-')}`;
+                        }
+                    }
+
+                    this.calculateGroups();
                 },
 
                 onPurposeEdit(index) {
